@@ -1,0 +1,13 @@
+node_modules
+.expo
+dist
+web-build
+android
+ios
+.git
+.cursor
+*.md
+.env
+server/data.json
+server/*.tmp
+npm-debug.*

@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { colors } from '../theme';
+import type { ColorTokens } from '../theme';
+import { useThemedStyles } from '../theme/useThemedStyles';
 
 export function LiveClock() {
+  const styles = useThemedStyles(createStyles);
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
@@ -29,20 +31,21 @@ export function LiveClock() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: ColorTokens) =>
+  StyleSheet.create({
   wrap: { alignItems: 'flex-end' },
   time: {
-    fontSize: 22,
+    fontSize: 16,
     fontWeight: '800',
     color: colors.ink,
     fontVariant: ['tabular-nums'],
-    letterSpacing: 0.4,
+    letterSpacing: 0.3,
   },
   day: {
-    marginTop: 1,
+    marginTop: 0,
     color: colors.muted,
     fontWeight: '700',
-    fontSize: 11,
+    fontSize: 10,
     textTransform: 'capitalize',
   },
 });

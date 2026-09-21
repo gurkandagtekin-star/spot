@@ -1,38 +1,107 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useAndroidBack } from '../hooks/useAndroidBack';
+import { KEYBOARD_SCROLL_PAD, useKeyboardHeight } from '../hooks/useKeyboard';
 import {
-  Alert,
-  KeyboardAvoidingView,
-  Linking,
+  FlatList,
+  Image,
+  Keyboard,
   Platform,
   Pressable,
-  ScrollView,
   Share,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Clipboard from 'expo-clipboard';
 import { Avatar } from '../components/Avatar';
-import { suggestionsFor } from '../data/play';
+import { useAlert } from '../context/AlertContext';
+import { PhotoPeek } from '../components/PhotoPeek';
+import { pickChatPhoto, setMediaPickerOpen } from '../media/pickPhoto';
 import { useSpot } from '../store/SpotContext';
-import { colors, radius } from '../theme';
-import { instagramUrl, remainingLabel } from '../utils';
+import { atHandle, remainingLabel } from '../utils';
+import type { ChatMessage } from '../types';
 
 type Props = {
   chatId: string;
   onBack: () => void;
+  onOpenProfile?: (userId: string, pinId?: string) => void;
 };
 
-export function ChatScreen({ chatId, onBack }: Props) {
+type Row =
+  | { kind: 'day'; id: string; label: string }
+  | { kind: 'msg'; id: string; msg: ChatMessage };
+
+function dayLabel(ts: number) {
+  const d = new Date(ts);
+  const today = new Date();
+  const sameDay = (a: Date, b: Date) =>
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate();
+  if (sameDay(d, today)) return 'Bugün';
+  const y = new Date(today);
+  y.setDate(today.getDate() - 1);
+  if (sameDay(d, y)) return 'Dün';
+  return d.toLocaleDateString('tr-TR', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  });
+}
+
+function rowsFromMessages(messages: ChatMessage[]): Row[] {
+  const rows: Row[] = [];
+  let lastDay = '';
+  for (const msg of messages) {
+    const label = dayLabel(msg.at);
+    if (label !== lastDay) {
+      lastDay = label;
+      rows.push({ kind: 'day', id: `day-${msg.at}`, label });
+    }
+    rows.push({ kind: 'msg', id: msg.id, msg });
+  }
+  return rows;
+}
+
+export function ChatScreen({ chatId, onBack, onOpenProfile }: Props) {
   const spot = useSpot();
+  const { showAlert } = useAlert();
+  const insets = useSafeAreaInsets();
   const [text, setText] = useState('');
-  const scrollRef = useRef<ScrollView>(null);
+  const [safetyOpen, setSafetyOpen] = useState(false);
+  const [peek, setPeek] = useState(false);
+  const [sendingPhoto, setSendingPhoto] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
+  const pickingRef = useRef(false);
+  const listRef = useRef<FlatList<Row>>(null);
+  const kbHeight = useKeyboardHeight();
+  useAndroidBack(
+    useCallback(() => {
+      if (pickingRef.current) return true;
+      if (peek) {
+        setPeek(false);
+        return true;
+      }
+      onBack();
+      return true;
+    }, [onBack, peek]),
+  );
   const chat = spot.chats.find((c) => c.id === chatId);
   const otherId = chat?.memberIds.find((id) => id !== spot.meId);
   const other = otherId ? spot.profileById(otherId) : undefined;
   const pin = chat ? spot.pins.find((p) => p.id === chat.pinId) : undefined;
   const closes = chat?.closesAt || pin?.expiresAt;
+  const rows = useMemo(
+    () => rowsFromMessages(chat?.messages ?? []),
+    [chat?.messages],
+  );
+
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 30000);
+    return () => clearInterval(id);
+  }, []);
 
   useEffect(() => {
     spot.setViewingChat(chatId);
@@ -40,71 +109,158 @@ export function ChatScreen({ chatId, onBack }: Props) {
   }, [chatId]);
 
   useEffect(() => {
-    const id = setTimeout(() => {
-      scrollRef.current?.scrollToEnd({ animated: true });
-    }, 80);
+    if (chat) spot.markChatRead(chatId);
+  }, [chat?.messages.length, chatId]);
+
+  const scrollToLatest = useCallback((animated = true) => {
+    requestAnimationFrame(() => {
+      listRef.current?.scrollToEnd({ animated });
+    });
+  }, []);
+
+  useEffect(() => {
+    const id = setTimeout(() => scrollToLatest(false), 80);
     return () => clearTimeout(id);
-  }, [chat?.messages.length]);
+  }, [chat?.messages.length, scrollToLatest]);
+
+  useEffect(() => {
+    const show = Keyboard.addListener('keyboardDidShow', () => {
+      setTimeout(() => scrollToLatest(true), 60);
+    });
+    return () => show.remove();
+  }, [scrollToLatest]);
 
   if (!chat) {
     return (
       <View style={styles.page}>
         <Pressable onPress={onBack} accessibilityRole="button" accessibilityLabel="Geri">
-          <Text style={styles.back}>← Eşleşme</Text>
+          <Text style={styles.back}>‹</Text>
         </Pressable>
         <Text style={styles.empty}>Bu sohbet kapandı. Mark süresi doldu.</Text>
       </View>
     );
   }
 
-  const send = () => {
+  const canSend = Boolean(text.trim()) && !sendingPhoto;
+  const active = Boolean(closes && closes > now);
+  const place = pin?.kind === 'chat' ? null : pin?.placeName;
+  const subtitle = [place || null, active ? 'Aktif' : remainingLabel(closes || 0, now) || 'Kapandı']
+    .filter(Boolean)
+    .join('  •  ');
+
+  const send = async () => {
     const trimmed = text.trim();
     if (!trimmed) return;
-    void spot.sendMessage(chat.id, trimmed);
     setText('');
+    const res = await spot.sendMessage(chat.id, trimmed);
+    if (!res.ok) {
+      setText(trimmed);
+      showAlert({ title: 'Mesaj', message: res.reason });
+      return;
+    }
+    scrollToLatest(true);
   };
 
-  const ideas = suggestionsFor(pin?.placeName, pin?.kind);
+  const sendPhoto = async (source: 'camera' | 'library') => {
+    if (pickingRef.current || sendingPhoto) return;
+    pickingRef.current = true;
+    setMediaPickerOpen(true);
+    try {
+      const targetId = chat.id;
+      const picked = await pickChatPhoto(source);
+      if (!picked?.dataUrl || picked.dataUrl.length < 80) {
+        if (picked) showAlert({ title: 'Fotoğraf', message: 'Fotoğraf okunamadı, tekrar dene.' });
+        return;
+      }
+      setSendingPhoto(true);
+      const res = await spot.sendMessage(targetId, '', { dataUrl: picked.dataUrl });
+      if (!res.ok) showAlert({ title: 'Fotoğraf', message: res.reason });
+      else scrollToLatest(true);
+    } catch (err) {
+      showAlert({
+        title: source === 'camera' ? 'Kamera' : 'Galeri',
+        message: err instanceof Error ? err.message : 'Açılamadı.',
+      });
+    } finally {
+      pickingRef.current = false;
+      setMediaPickerOpen(false);
+      setSendingPhoto(false);
+    }
+  };
+
+  const attach = () => {
+    showAlert({
+      title: 'Ekle',
+      message: 'Sohbete bir kare koy.',
+      actions: [
+        { text: 'Kamera', onPress: () => void sendPhoto('camera') },
+        { text: 'Galeri', onPress: () => void sendPhoto('library') },
+        { text: 'Vazgeç', style: 'cancel' },
+      ],
+    });
+  };
+
+  const composerPad = kbHeight > 0 ? 6 : Math.max(insets.bottom, 10);
 
   return (
-    <KeyboardAvoidingView
-      style={styles.page}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-    >
+    <View style={styles.page}>
       <View style={styles.head}>
         <View style={styles.headRow}>
-          <Pressable onPress={onBack} accessibilityRole="button" accessibilityLabel="Geri" hitSlop={8}>
-            <Text style={styles.back}>←</Text>
+          <Pressable
+            onPress={onBack}
+            accessibilityRole="button"
+            accessibilityLabel="Geri"
+            hitSlop={8}
+            style={styles.backHit}
+          >
+            <Text style={styles.back}>‹</Text>
           </Pressable>
-          <Avatar name={other?.name || 'S'} size={42} uri={other?.photoUrl} />
-          <View style={{ flex: 1 }}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Profil fotoğrafı"
+            onPress={() => setPeek(true)}
+          >
+            <Avatar name={other?.name || 'S'} size={42} uri={other?.photoUrl} />
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Profili aç"
+            onPress={() => {
+              if (otherId) onOpenProfile?.(otherId, pin?.id);
+            }}
+            style={{ flex: 1 }}
+          >
             <Text style={styles.name} numberOfLines={1}>
               {other?.name ?? 'Sohbet'}
             </Text>
             <Text style={styles.note} numberOfLines={1}>
-              {other?.instagram ? `@${other.instagram}` : 'Kullanıcı adı yok'}
+              {subtitle || 'Aktif'}
             </Text>
-          </View>
-          {closes ? (
-            <View style={styles.timer}>
-              <Text style={styles.timerText}>{remainingLabel(closes)}</Text>
-            </View>
+          </Pressable>
+          {otherId ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Menü"
+              hitSlop={8}
+              onPress={() => setSafetyOpen((v) => !v)}
+              style={styles.menuHit}
+            >
+              <View style={styles.menuDots}>
+                <View style={styles.menuDot} />
+                <View style={styles.menuDot} />
+                <View style={styles.menuDot} />
+              </View>
+            </Pressable>
           ) : null}
         </View>
-        <View style={styles.pinCard}>
-          <Text style={styles.pinKicker}>{pin?.placeName || 'Mark'}</Text>
-          <Text style={styles.pin} numberOfLines={2}>
-            {pin ? pin.text : 'Mark haritadan kalktı. Kısa bir süre daha açık.'}
-          </Text>
-        </View>
-        {otherId ? (
+        {otherId && safetyOpen ? (
           <View style={styles.safety}>
             <Pressable
               style={styles.safetyChip}
               onPress={async () => {
                 const res = await spot.startSafeShare(chat.id);
                 if (!res.ok) {
-                  Alert.alert('Paylaşılamadı', res.reason);
+                  showAlert({ title: 'Paylaşılamadı', message: res.reason });
                   return;
                 }
                 try {
@@ -113,7 +269,10 @@ export function ChatScreen({ chatId, onBack }: Props) {
                   });
                 } catch {
                   await Clipboard.setStringAsync(res.url);
-                  Alert.alert('Link kopyalandı', 'Güvendiğin kişiye yapıştır.');
+                  showAlert({
+                    title: 'Link kopyalandı',
+                    message: 'Güvendiğin kişiye yapıştır.',
+                  });
                 }
               }}
             >
@@ -129,290 +288,399 @@ export function ChatScreen({ chatId, onBack }: Props) {
                 <Text style={styles.safetyText}>Kapat</Text>
               </Pressable>
             ) : null}
-            {other?.instagram ? (
+            {other ? (
               <Pressable
                 style={styles.safetyChip}
-                onPress={() => Linking.openURL(instagramUrl(other.instagram))}
+                onPress={() => onOpenProfile?.(other.id, chat.pinId)}
               >
-                <Text style={[styles.safetyText, { color: colors.instagram }]}>IG</Text>
+                <Text style={styles.safetyText}>{atHandle(other) || other.name}</Text>
               </Pressable>
             ) : null}
             <Pressable
               style={styles.safetyChip}
-              onPress={async () => {
-                const res = await spot.blockUser(otherId);
-                if (res.ok) onBack();
+              onPress={() => {
+                showAlert({
+                  title: 'Engelle',
+                  message: `${other?.name || 'Bu kişi'} ile sohbet kapanır, mark’ları görünmez.`,
+                  confirmText: 'Engelle',
+                  cancelText: 'Vazgeç',
+                  type: 'danger',
+                  onConfirm: () => {
+                    void (async () => {
+                      const res = await spot.blockUser(otherId);
+                      if (res.ok) onBack();
+                    })();
+                  },
+                });
               }}
             >
               <Text style={styles.safetyText}>Engelle</Text>
             </Pressable>
             <Pressable
               style={styles.safetyChip}
-              onPress={async () => {
-                const res = await spot.reportUser(otherId, 'rahatsiz', chat.pinId);
-                if (res.ok) {
-                  Alert.alert(
-                    'Şikayet alındı',
-                    'Ekip bakacak. İstersen kişiyi de engelleyebilirsin.',
-                  );
-                }
+              onPress={() => {
+                showAlert({
+                  title: 'Şikayet et',
+                  message: 'Ekip bakacak. Bu kişiyle konuşmaya devam edebilirsin.',
+                  confirmText: 'Gönder',
+                  cancelText: 'Vazgeç',
+                  onConfirm: () => {
+                    void (async () => {
+                      const res = await spot.reportUser(otherId, 'rahatsiz', chat.pinId);
+                      if (res.ok) {
+                        showAlert({
+                          title: 'Şikayet alındı',
+                          message: 'İstersen kişiyi de engelleyebilirsin.',
+                        });
+                      }
+                    })();
+                  },
+                });
               }}
             >
               <Text style={styles.safetyText}>Şikayet</Text>
             </Pressable>
+            <Pressable
+              style={styles.safetyChip}
+              onPress={() => {
+                showAlert({
+                  title: 'Sohbeti sil',
+                  message: `${other?.name || 'Bu kişi'} listeden kalkar. Karşı taraf hâlâ görür.`,
+                  confirmText: 'Sil',
+                  cancelText: 'Vazgeç',
+                  type: 'danger',
+                  onConfirm: () => {
+                    void (async () => {
+                      const res = await spot.hideChat(chat.id);
+                      if (res.ok) onBack();
+                    })();
+                  },
+                });
+              }}
+            >
+              <Text style={[styles.safetyText, { color: '#FF8A9B' }]}>Sil</Text>
+            </Pressable>
           </View>
         ) : null}
       </View>
-      {chat.needsCheckin ? (
-        <View style={styles.checkin}>
-          <Text style={styles.checkinTitle}>Buluştunuz mu?</Text>
-          <Text style={styles.checkinLead}>
-            Sadece aktivite oldu mu. Puan görünmez.
-          </Text>
-          <View style={styles.checkinRow}>
+
+      <View style={[styles.body, { paddingBottom: kbHeight }]}>
+          {chat.needsCheckin ? (
+            <View style={styles.checkin}>
+              <Text style={styles.checkinTitle}>Buluştunuz mu?</Text>
+              <View style={styles.checkinRow}>
+                <Pressable style={styles.yes} onPress={() => void spot.checkin(chat.id, true)}>
+                  <Text style={styles.yesText}>Evet</Text>
+                </Pressable>
+                <Pressable style={styles.no} onPress={() => void spot.checkin(chat.id, false)}>
+                  <Text style={styles.noText}>Hayır</Text>
+                </Pressable>
+              </View>
+            </View>
+          ) : null}
+          <FlatList
+            ref={listRef}
+            style={styles.thread}
+            data={rows}
+            keyExtractor={(item) => item.id}
+            ListHeaderComponent={
+              <View style={styles.infoBanner}>
+                <Text style={styles.infoBannerTxt}>
+                  Bu sohbet Mark süresince aktiftir. Güvenli buluşmalar dileriz.
+                </Text>
+              </View>
+            }
+            contentContainerStyle={[
+              styles.list,
+              { paddingBottom: kbHeight > 0 ? KEYBOARD_SCROLL_PAD : 16 },
+            ]}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="interactive"
+            automaticallyAdjustKeyboardInsets={false}
+            onContentSizeChange={() => scrollToLatest(true)}
+            renderItem={({ item }) => {
+              if (item.kind === 'day') {
+                return (
+                  <View style={styles.dayWrap}>
+                    <View style={styles.dayPill}>
+                      <Text style={styles.day}>{item.label}</Text>
+                    </View>
+                  </View>
+                );
+              }
+              const m = item.msg;
+              const mine = m.fromId === spot.meId;
+              const system = m.fromId === 'system';
+              const time = new Date(m.at).toLocaleTimeString('tr-TR', {
+                hour: '2-digit',
+                minute: '2-digit',
+              });
+              const photo =
+                m.imageUrl ||
+                (m.text && /^data:image\//i.test(m.text) ? m.text : '');
+              const caption =
+                m.text &&
+                m.text !== '📷 Fotoğraf' &&
+                !/^data:image\//i.test(m.text)
+                  ? m.text
+                  : '';
+              if (system) {
+                return (
+                  <View style={styles.system}>
+                    <Text style={styles.systemText}>{m.text}</Text>
+                  </View>
+                );
+              }
+              return (
+                <View style={[styles.bubble, mine ? styles.mine : styles.theirs]}>
+                  {photo ? (
+                    <Image source={{ uri: photo }} style={styles.photo} />
+                  ) : null}
+                  {caption ? (
+                    <Text style={[styles.msg, mine && styles.mineText]}>{caption}</Text>
+                  ) : null}
+                  <Text style={[styles.stamp, mine && styles.stampMine]}>{time}</Text>
+                </View>
+              );
+            }}
+          />
+          <View style={[styles.composer, { paddingBottom: composerPad }]}>
             <Pressable
-              style={styles.yes}
-              onPress={() => void spot.checkin(chat.id, true)}
+              accessibilityRole="button"
+              accessibilityLabel="Ekle"
+              style={styles.mediaBtn}
+              onPress={attach}
             >
-              <Text style={styles.yesText}>Evet</Text>
+              <Text style={styles.mediaIcon}>＋</Text>
             </Pressable>
+            <TextInput
+              value={text}
+              onChangeText={setText}
+              placeholder={sendingPhoto ? 'Fotoğraf gönderiliyor…' : 'Mesaj...'}
+              placeholderTextColor="rgba(247, 240, 245, 0.42)"
+              style={styles.input}
+              onSubmitEditing={() => void send()}
+              returnKeyType="send"
+              blurOnSubmit={false}
+              multiline
+              maxLength={500}
+              editable={!sendingPhoto}
+            />
             <Pressable
-              style={styles.no}
-              onPress={() => void spot.checkin(chat.id, false)}
+              style={[styles.send, !canSend && styles.sendOff]}
+              onPress={() => void send()}
+              disabled={!canSend}
+              accessibilityRole="button"
+              accessibilityLabel="Gönder"
             >
-              <Text style={styles.noText}>Hayır</Text>
+              <Text style={styles.sendText}>➤</Text>
             </Pressable>
           </View>
-        </View>
-      ) : null}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.playBar}
-      >
-        {ideas.map((idea) => (
-          <Pressable
-            key={idea}
-            style={styles.idea}
-            onPress={() => void spot.sendMessage(chat.id, idea)}
-          >
-            <Text style={styles.ideaText} numberOfLines={2}>
-              {idea}
-            </Text>
-          </Pressable>
-        ))}
-        <Pressable
-          style={styles.spin}
-          onPress={async () => {
-            const res = await spot.spinChat(chat.id);
-            if (!res.ok) Alert.alert('Çark', res.reason);
-          }}
-        >
-          <Text style={styles.spinText}>Çark</Text>
-        </Pressable>
-      </ScrollView>
-      <ScrollView ref={scrollRef} contentContainerStyle={styles.list}>
-        {chat.messages.map((m) => {
-          const mine = m.fromId === spot.meId;
-          const system = m.fromId === 'system';
-          return (
-            <View
-              key={m.id}
-              style={[
-                styles.bubble,
-                system && styles.system,
-                mine && !system && styles.mine,
-              ]}
-            >
-              <Text
-                style={[
-                  styles.msg,
-                  mine && !system && styles.mineText,
-                  system && styles.systemText,
-                ]}
-              >
-                {m.text}
-              </Text>
-            </View>
-          );
-        })}
-      </ScrollView>
-      <View style={styles.composer}>
-        <TextInput
-          value={text}
-          onChangeText={setText}
-          placeholder="Nerede, saat kaç?"
-          placeholderTextColor={colors.muted}
-          style={styles.input}
-          onSubmitEditing={send}
-          returnKeyType="send"
-        />
-        <Pressable style={styles.send} onPress={send}>
-          <Text style={styles.sendText}>Gönder</Text>
-        </Pressable>
       </View>
-    </KeyboardAvoidingView>
+      <PhotoPeek
+        visible={peek}
+        uri={other?.photoUrl}
+        name={other?.name ?? 'Sohbet'}
+        onClose={() => setPeek(false)}
+      />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   page: { flex: 1, backgroundColor: 'transparent' },
+  body: { flex: 1 },
   head: {
-    paddingHorizontal: 16,
-    paddingTop: 10,
-    paddingBottom: 10,
-    backgroundColor: colors.paper,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.line,
-    gap: 10,
-  },
-  back: { color: colors.coral, fontWeight: '800', fontSize: 22, width: 28 },
-  headRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  name: { fontSize: 17, fontWeight: '900', color: colors.ink },
-  note: { color: colors.muted, marginTop: 1, fontSize: 12, fontWeight: '600' },
-  timer: {
-    backgroundColor: colors.tealSoft,
-    borderRadius: radius.pill,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-  },
-  timerText: { color: colors.teal, fontWeight: '800', fontSize: 11 },
-  pinCard: {
-    backgroundColor: colors.paperSoft,
-    borderRadius: radius.sm,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderWidth: 1,
-    borderColor: colors.line,
-  },
-  pinKicker: {
-    color: colors.teal,
-    fontWeight: '800',
-    fontSize: 11,
-    marginBottom: 2,
-  },
-  pin: { color: colors.ink, fontWeight: '600', fontSize: 13, lineHeight: 18 },
-  safety: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  safetyChip: {
-    borderWidth: 1,
-    borderColor: colors.line,
-    backgroundColor: colors.paperSoft,
-    borderRadius: radius.pill,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-  },
-  safetyText: { color: colors.muted, fontWeight: '700', fontSize: 11 },
-  checkin: {
-    marginHorizontal: 16,
-    marginTop: 10,
-    backgroundColor: colors.tealSoft,
-    borderRadius: radius.md,
-    padding: 12,
+    paddingHorizontal: 8,
+    paddingTop: 6,
+    paddingBottom: 8,
+    backgroundColor: 'rgba(16, 10, 24, 0.92)',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(255, 94, 151, 0.22)',
     gap: 8,
   },
-  checkinTitle: { fontWeight: '800', color: colors.ink },
-  checkinLead: { color: colors.muted, fontSize: 12, lineHeight: 17 },
+  backHit: { width: 32, alignItems: 'center', justifyContent: 'center' },
+  back: { color: '#FF7AB8', fontWeight: '300', fontSize: 34, lineHeight: 36, marginTop: -2 },
+  headRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  name: { fontSize: 16, fontWeight: '800', color: '#F7F0F5' },
+  note: { color: 'rgba(255, 184, 214, 0.82)', marginTop: 1, fontSize: 12, fontWeight: '600' },
+  menuHit: {
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  menuDots: { gap: 3, alignItems: 'center' },
+  menuDot: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#FF7AB8',
+  },
+  safety: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, paddingHorizontal: 6 },
+  safetyChip: {
+    borderWidth: 1,
+    borderColor: 'rgba(255, 94, 151, 0.28)',
+    backgroundColor: 'rgba(42, 36, 56, 0.85)',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  safetyText: { color: '#D8CBE4', fontWeight: '700', fontSize: 11 },
+  infoBanner: {
+    alignSelf: 'center',
+    maxWidth: '86%',
+    marginTop: 10,
+    marginBottom: 14,
+    backgroundColor: 'rgba(244, 193, 110, 0.16)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 214, 120, 0.35)',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  infoBannerTxt: {
+    color: '#F6DE9A',
+    fontSize: 12,
+    lineHeight: 17,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  checkin: {
+    marginHorizontal: 12,
+    marginTop: 8,
+    backgroundColor: 'rgba(30, 18, 40, 0.92)',
+    borderRadius: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 94, 151, 0.28)',
+  },
+  checkinTitle: { fontWeight: '800', color: '#F7F0F5', fontSize: 13 },
   checkinRow: { flexDirection: 'row', gap: 8 },
   yes: {
     flex: 1,
-    backgroundColor: colors.teal,
-    borderRadius: radius.pill,
-    paddingVertical: 10,
+    backgroundColor: '#FF5E97',
+    borderRadius: 999,
+    paddingVertical: 8,
     alignItems: 'center',
   },
   yesText: { color: '#fff', fontWeight: '800' },
   no: {
     flex: 1,
-    borderWidth: 1,
-    borderColor: colors.line,
-    borderRadius: radius.pill,
-    paddingVertical: 10,
-    alignItems: 'center',
-    backgroundColor: colors.paper,
-  },
-  noText: { color: colors.muted, fontWeight: '800' },
-  playBar: {
-    paddingHorizontal: 16,
-    paddingTop: 10,
-    paddingBottom: 4,
-    gap: 8,
-    flexDirection: 'row',
-    alignItems: 'stretch',
-  },
-  idea: {
-    maxWidth: 180,
-    backgroundColor: colors.paper,
-    borderWidth: 1,
-    borderColor: colors.line,
-    borderRadius: radius.md,
-    paddingHorizontal: 12,
+    backgroundColor: '#2A2438',
+    borderRadius: 999,
     paddingVertical: 8,
+    alignItems: 'center',
   },
-  ideaText: { color: colors.ink, fontSize: 12, fontWeight: '600', lineHeight: 16 },
-  spin: {
-    backgroundColor: colors.ink,
-    borderRadius: radius.pill,
-    paddingHorizontal: 14,
-    justifyContent: 'center',
+  noText: { color: '#D8CBE4', fontWeight: '800' },
+  thread: { flex: 1 },
+  list: { paddingHorizontal: 10, paddingTop: 4, paddingBottom: 12, flexGrow: 1 },
+  dayWrap: { alignItems: 'center', marginVertical: 10 },
+  dayPill: {
+    backgroundColor: 'rgba(12, 8, 20, 0.55)',
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
   },
-  spinText: { color: '#fff', fontWeight: '800', fontSize: 12 },
-  list: { padding: 16, gap: 8, paddingBottom: 20, flexGrow: 1 },
+  day: {
+    color: 'rgba(247, 240, 245, 0.72)',
+    fontSize: 11,
+    fontWeight: '800',
+  },
   bubble: {
     maxWidth: '78%',
-    alignSelf: 'flex-start',
-    backgroundColor: colors.paper,
     borderRadius: 18,
-    borderBottomLeftRadius: 6,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
+    paddingHorizontal: 12,
+    paddingTop: 8,
+    paddingBottom: 6,
+    marginVertical: 3,
+  },
+  theirs: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#2A2238',
+    borderBottomLeftRadius: 5,
     borderWidth: 1,
-    borderColor: colors.line,
+    borderColor: 'rgba(255, 255, 255, 0.06)',
   },
   mine: {
     alignSelf: 'flex-end',
-    backgroundColor: colors.coral,
-    borderColor: colors.coral,
-    borderBottomLeftRadius: 18,
-    borderBottomRightRadius: 6,
+    backgroundColor: '#FF5E97',
+    borderBottomRightRadius: 5,
   },
   system: {
     alignSelf: 'center',
-    backgroundColor: 'transparent',
-    borderWidth: 0,
     maxWidth: '88%',
-    paddingVertical: 4,
+    marginVertical: 8,
+    paddingHorizontal: 12,
   },
-  msg: { color: colors.ink, lineHeight: 20, fontSize: 15 },
+  msg: { color: '#F3EAF4', lineHeight: 21, fontSize: 15.5 },
   mineText: { color: '#fff' },
-  systemText: { color: colors.muted, textAlign: 'center', fontSize: 12, lineHeight: 18 },
+  systemText: {
+    color: 'rgba(247, 240, 245, 0.55)',
+    textAlign: 'center',
+    fontSize: 12,
+    lineHeight: 18,
+  },
+  photo: {
+    width: 220,
+    height: 220,
+    borderRadius: 12,
+    marginBottom: 4,
+    backgroundColor: '#1A1224',
+  },
+  stamp: {
+    alignSelf: 'flex-end',
+    color: 'rgba(247, 240, 245, 0.45)',
+    fontSize: 10,
+    fontWeight: '700',
+    marginTop: 3,
+  },
+  stampMine: { color: 'rgba(255,255,255,0.78)' },
   composer: {
     flexDirection: 'row',
     gap: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    backgroundColor: colors.paper,
-    borderTopWidth: 1,
-    borderTopColor: colors.line,
-    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingTop: 8,
+    backgroundColor: '#140C1C',
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: 'rgba(255, 94, 151, 0.18)',
+    alignItems: 'flex-end',
   },
+  mediaBtn: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: '#2A2238',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 2,
+  },
+  mediaIcon: { fontSize: 20, color: '#FF7AB8', fontWeight: '700' },
   input: {
     flex: 1,
-    borderWidth: 1,
-    borderColor: colors.line,
-    borderRadius: radius.pill,
+    borderWidth: 0,
+    borderRadius: 22,
     paddingHorizontal: 16,
-    paddingVertical: 11,
-    color: colors.ink,
-    backgroundColor: colors.paperSoft,
-    fontSize: 15,
+    paddingVertical: Platform.OS === 'ios' ? 10 : 8,
+    color: '#F7F0F5',
+    backgroundColor: '#24182E',
+    fontSize: 16,
+    maxHeight: 120,
   },
   send: {
-    backgroundColor: colors.coral,
-    borderRadius: radius.pill,
-    paddingHorizontal: 16,
-    paddingVertical: 11,
+    backgroundColor: '#FF5E97',
+    borderRadius: 21,
+    width: 42,
+    height: 42,
+    alignItems: 'center',
     justifyContent: 'center',
+    marginBottom: 2,
   },
-  sendText: { color: '#fff', fontWeight: '800' },
-  empty: { padding: 20, color: colors.muted, lineHeight: 22 },
+  sendOff: { opacity: 0.35 },
+  sendText: { color: '#fff', fontWeight: '900', fontSize: 16 },
+  empty: { padding: 20, color: 'rgba(247, 240, 245, 0.65)', lineHeight: 22 },
 });

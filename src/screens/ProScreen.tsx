@@ -1,8 +1,11 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
+import { useAndroidBack } from '../hooks/useAndroidBack';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { PRO_FEATURES, PRO_PLANS } from '../data/pro';
+import { IAP_ENABLED } from '../iap';
 import { useSpot } from '../store/SpotContext';
-import { colors, radius } from '../theme';
+import { radius, type ColorTokens } from '../theme';
+import { useThemedStyles } from '../theme/useThemedStyles';
 
 type Props = {
   onBack: () => void;
@@ -10,6 +13,13 @@ type Props = {
 
 export function ProScreen({ onBack }: Props) {
   const spot = useSpot();
+  const styles = useThemedStyles(createStyles);
+  useAndroidBack(
+    useCallback(() => {
+      onBack();
+      return true;
+    }, [onBack]),
+  );
   const [planId, setPlanId] = useState<(typeof PRO_PLANS)[number]['id']>('yearly');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -24,16 +34,16 @@ export function ProScreen({ onBack }: Props) {
       <Text style={styles.kicker}>Mark Date Pro</Text>
       <Text style={styles.title}>Daha çok çık, daha görünür ol</Text>
       <Text style={styles.lead}>
-        Ücretsiz hesapta günde 2 mark. Pro, haritayı ve eşleşmeyi günlük kota
-        olmadan kullanman için.
+        Ücretsiz hesapta günde 2 mark, reklamla +2. Pro: 12 mark, 16 saat,
+        Semt/Tümü, sohbet noktası ve reklamsız harita.
       </Text>
 
       {active ? (
         <View style={styles.activeCard}>
           <Text style={styles.activeTitle}>Pro açık</Text>
           <Text style={styles.activeText}>
-            Sınırsız mark ve öne çıkarma bu hesapta. Mağaza ödemesi gelince
-            abonelik buradan yönetilir.
+            Sınırsız değil: günde 12 mark, 16 saat haritada, Semt/Tümü ve
+            reklamsız deneyim bu hesapta açık.
           </Text>
         </View>
       ) : (
@@ -67,7 +77,7 @@ export function ProScreen({ onBack }: Props) {
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
-      {active ? null : (
+      {active ? null : IAP_ENABLED ? (
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Pro satın al"
@@ -82,20 +92,25 @@ export function ProScreen({ onBack }: Props) {
           }}
         >
           <Text style={styles.ctaText}>
-            {busy ? 'İşleniyor…' : 'Satın al (önizleme)'}
+            {busy ? 'İşleniyor…' : 'Satın al'}
           </Text>
         </Pressable>
+      ) : (
+        <View style={styles.cta}>
+          <Text style={styles.ctaText}>Google Play ödemesi yakında</Text>
+        </View>
       )}
       <Text style={styles.fine}>
-        Gerçek tahsilat yok. App Store / Google Play bağlanınca ödeme oradan
-        alınır. Bu ekran paketleri ve özellikleri gösterir; önizlemede Pro
-        hesabına işlenir.
+        {IAP_ENABLED
+          ? 'Ödeme App Store / Google Play üzerinden alınır.'
+          : 'Satın alma henüz bağlı değil. Özellikler Pro açılınca devreye girer. Sahte tahsilat yok.'}
       </Text>
     </ScrollView>
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: ColorTokens) =>
+  StyleSheet.create({
   page: { flex: 1, backgroundColor: 'transparent' },
   content: { padding: 20, paddingBottom: 40 },
   back: { color: colors.coral, fontWeight: '700', marginBottom: 10 },

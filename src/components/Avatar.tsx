@@ -1,5 +1,8 @@
+import { useEffect, useState } from 'react';
 import { Image, StyleSheet, Text, View } from 'react-native';
-import { colors } from '../theme';
+import { getFormattedImageUrl } from '../api';
+import type { ColorTokens } from '../theme';
+import { useThemedStyles } from '../theme/useThemedStyles';
 
 export function Avatar({
   name,
@@ -10,14 +13,28 @@ export function Avatar({
   uri?: string;
   size?: number;
 }) {
+  const styles = useThemedStyles(createStyles);
+  const [broken, setBroken] = useState(false);
   const letter = (name || '?').trim().slice(0, 1).toUpperCase();
+  const src = getFormattedImageUrl(uri) || '';
   const round = {
     width: size,
     height: size,
     borderRadius: size / 2,
   };
-  if (uri) {
-    return <Image source={{ uri }} style={[styles.img, round]} />;
+
+  useEffect(() => {
+    setBroken(false);
+  }, [src]);
+
+  if (src && !broken) {
+    return (
+      <Image
+        source={{ uri: src }}
+        style={[styles.img, round]}
+        onError={() => setBroken(true)}
+      />
+    );
   }
   return (
     <View style={[styles.wrap, round]}>
@@ -26,12 +43,13 @@ export function Avatar({
   );
 }
 
-const styles = StyleSheet.create({
-  wrap: {
-    backgroundColor: colors.coralSoft,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  img: { backgroundColor: colors.coralSoft },
-  letter: { fontWeight: '800', color: colors.coral },
-});
+const createStyles = (colors: ColorTokens) =>
+  StyleSheet.create({
+    wrap: {
+      backgroundColor: '#5B2A6B',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    img: { backgroundColor: colors.coralSoft },
+    letter: { fontWeight: '800', color: '#F4C6FF' },
+  });

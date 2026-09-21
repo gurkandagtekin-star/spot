@@ -1,8 +1,8 @@
+import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 import * as AuthSession from 'expo-auth-session';
 import * as WebBrowser from 'expo-web-browser';
-import { API_URL, api } from '../api';
-import { parseSpotToken } from './parseToken';
+import { api, getApiUrl } from '../api';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -11,55 +11,177 @@ export type OAuthResult =
   | { cancelled: true }
   | { error: string };
 
-function nativeRedirect() {
+const APP_SCHEME = 'markdate';
+const WEB_CLIENT_ID = String(
+  process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ||
+    process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID ||
+    '',
+).trim();
+
+let nativeConfigured = false;
+
+export function googleClientId() {
+  return WEB_CLIENT_ID;
+}
+
+export function isExpoGo() {
+  return (
+    Constants.appOwnership === 'expo' ||
+    Constants.executionEnvironment === 'storeClient'
+  );
+}
+
+function expoProxyRedirectUri() {
+  const owner = Constants.expoConfig?.owner || 'rakbenadam';
+  const slug = Constants.expoConfig?.slug || 'mark-date';
+  return `https://auth.expo.io/@${owner}/${slug}`;
+}
+
+function appReturnUri() {
+  if (Platform.OS === 'web' && typeof window !== 'undefined') {
+    return window.location.origin;
+  }
   return AuthSession.makeRedirectUri({
-    scheme: 'markdate',
+    scheme: APP_SCHEME,
     path: 'oauth',
   });
 }
 
-export async function startOAuth(
-  provider: 'google' | 'instagram',
-): Promise<OAuthResult | void> {
-  const redirect =
-    Platform.OS === 'web' && typeof window !== 'undefined'
-      ? window.location.origin
-      : nativeRedirect();
+async function startWebGoogleSignIn(): Promise<OAuthResult | void> {
+  if (!WEB_CLIENT_ID) return { error: 'Google ayarlı değil.' };
+  if (typeof window === 'undefined') return { error: 'Google penceresi açılamadı.' };
+  const url = `${getApiUrl()}/auth/google/start?redirect=${encodeURIComponent(
+    window.location.origin,
+  )}`;
+  const popup = window.open(url, 'spot-auth', 'width=420,height=680');
+  if (!popup) window.location.assign(url);
+}
 
-  let ticket = '';
-  if (provider === 'instagram') {
-    try {
-      ticket = (await api.igTicket()).ticket;
-    } catch {
-      /* Google oturumu yoksa sunucu kurulum veya hata sayfası gösterir */
-    }
-  }
-  const url = `${API_URL}/auth/${provider}/start?redirect=${encodeURIComponent(
-    redirect,
-  )}&ticket=${encodeURIComponent(ticket)}`;
-
-  if (Platform.OS === 'web' && typeof window !== 'undefined') {
-    if (provider === 'instagram') {
-      window.location.assign(url);
-      return;
-    }
-    const popup = window.open(url, 'spot-auth', 'width=420,height=680');
-    if (!popup) window.location.assign(url);
-    return;
-  }
+async function startBrowserGoogleSignIn(): Promise<OAuthResult> {
+  if (!WEB_CLIENT_ID) return { error: 'Google ayarlı değil.' };
+  const proxy = expoProxyRedirectUri();
+  const returnUrl = appReturnUri();
+  const request = new AuthSession.AuthRequest({
+    clientId: WEB_CLIENT_ID,
+    redirectUri: proxy,
+    responseType: AuthSession.ResponseType.Code,
+    scopes: ['openid', 'profile', 'email'],
+    usePKCE: true,
+    extraParams: { prompt: 'select_account' },
+  });
+  const authUrl = await request.makeAuthUrlAsync({
+    authorizationEndpoint: 'https://accounts.google.com/o/oauth2/v2/auth',
+  });
+  const startUrl = `${proxy}/start?${new URLSearchParams({
+    authUrl,
+    returnUrl,
+  }).toString()}`;
 
   try {
-    const result = await WebBrowser.openAuthSessionAsync(url, redirect);
-    if (result.type === 'cancel' || result.type === 'dismiss') {
-      return { cancelled: true };
+    const result = await WebBrowser.openAuthSessionAsync(startUrl, returnUrl);
+    if (result.type !== 'success' || !result.url) {
+      if (result.type === 'cancel' || result.type === 'dismiss') {
+        return { cancelled: true };
+      }
+      return { error: 'Giriş tamamlanamadı.' };
     }
-    if (result.type === 'success' && result.url) {
-      const token = parseSpotToken(result.url);
-      if (token) return { token };
+    const parsed = request.parseReturnUrl(result.url);
+    const idToken =
+      parsed.type === 'success' ? String(parsed.params.id_token || '').trim() : '';
+    const code =
+      parsed.type === 'success' ? String(parsed.params.code || '').trim() : '';
+    if (!idToken && !code) {
       return { error: 'Giriş tamamlandı ama oturum anahtarı gelmedi.' };
     }
-      return { error: 'Giriş tamamlanamadı.' };
-  } catch {
-    return { error: 'Giriş penceresi açılamadı.' };
+    const { token } = await api.googleNative({
+      idToken: idToken || undefined,
+      code: code || undefined,
+      redirectUri: proxy,
+      codeVerifier: request.codeVerifier,
+    });
+    return { token };
+  } catch (err) {
+    return {
+      error: err instanceof Error ? err.message : 'Google penceresi açılamadı.',
+    };
   }
+}
+
+function missingNativeModule(err: unknown) {
+  const message = String(err instanceof Error ? err.message : err);
+  return /RNGoogleSignin|native module|Expo Go/i.test(message);
+}
+
+async function startNativeGoogleSignIn(): Promise<OAuthResult> {
+  if (!WEB_CLIENT_ID) return { error: 'Google ayarlı değil.' };
+  const {
+    GoogleSignin,
+    isErrorWithCode,
+    isSuccessResponse,
+    statusCodes,
+  } = await import('@react-native-google-signin/google-signin');
+
+  if (!nativeConfigured) {
+    GoogleSignin.configure({
+      webClientId: WEB_CLIENT_ID,
+      offlineAccess: false,
+    });
+    nativeConfigured = true;
+  }
+
+  await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
+  const response = await GoogleSignin.signIn();
+  if (!isSuccessResponse(response)) {
+    return { cancelled: true };
+  }
+  let idToken = String(response.data.idToken || '').trim();
+  if (!idToken) {
+    const tokens = await GoogleSignin.getTokens();
+    idToken = String(tokens.idToken || '').trim();
+  }
+  if (!idToken) {
+    return { error: 'Giriş tamamlandı ama oturum anahtarı gelmedi.' };
+  }
+  const { token } = await api.googleNative({ idToken });
+  return { token };
+}
+
+export async function startGoogleSignIn(): Promise<OAuthResult | void> {
+  if (Platform.OS === 'web') return startWebGoogleSignIn();
+  if (isExpoGo()) return startBrowserGoogleSignIn();
+  try {
+    return await startNativeGoogleSignIn();
+  } catch (err) {
+    if (missingNativeModule(err)) {
+      return startBrowserGoogleSignIn();
+    }
+    try {
+      const { isErrorWithCode, statusCodes } = await import(
+        '@react-native-google-signin/google-signin'
+      );
+      if (isErrorWithCode(err) && err.code === statusCodes.SIGN_IN_CANCELLED) {
+        return { cancelled: true };
+      }
+      if (isErrorWithCode(err) && err.code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) {
+        return { error: 'Google Play Hizmetleri yok veya güncel değil.' };
+      }
+      if (isErrorWithCode(err) && err.code === statusCodes.IN_PROGRESS) {
+        return { error: 'Google girişi zaten sürüyor.' };
+      }
+    } catch {
+      return startBrowserGoogleSignIn();
+    }
+    return {
+      error: err instanceof Error ? err.message : 'Google girişi başarısız.',
+    };
+  }
+}
+
+export async function startOAuth(
+  provider: 'google' | 'instagram' = 'google',
+): Promise<OAuthResult | void> {
+  if (provider !== 'google') {
+    return { error: 'Instagram bağlantısı kaldırıldı.' };
+  }
+  return startGoogleSignIn();
 }

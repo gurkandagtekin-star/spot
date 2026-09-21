@@ -16,6 +16,15 @@ function pickWheel(pin) {
   if (pin?.kind === 'activity') {
     pool.push('Kısa iddia: kim kaybeder, kahveyi o ısmarlar.');
   }
+  if (pin?.kind === 'chat') {
+    return (
+      [
+        'Üç soru, yüz yüze şart değil.',
+        'Ne izliyorsun / ne dinliyorsun, 5 dakikalık sohbet.',
+        'Aynı şehirde iki yabancı: merhaba deyin.',
+      ][Math.floor(Math.random() * 3)]
+    );
+  }
   return pool[Math.floor(Math.random() * pool.length)];
 }
 

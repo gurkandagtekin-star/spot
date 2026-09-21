@@ -4,7 +4,7 @@ import { parseSpotToken } from './parseToken';
 export type AppLink =
   | { kind: 'auth'; token: string }
   | { kind: 'chat'; chatId: string }
-  | { kind: 'tab'; tab: 'map' | 'chats' | 'profile' }
+  | { kind: 'tab'; tab: 'discover' | 'map' | 'chats' | 'profile' }
   | { kind: 'none' };
 
 export function parseAppLink(url: string): AppLink {
@@ -25,6 +25,7 @@ export function parseAppLink(url: string): AppLink {
     host === 'chat' ||
     host === 'chats' ||
     host === 'map' ||
+    host === 'discover' ||
     host === 'profile' ||
     host === 'oauth'
       ? [host, ...pathParts]
@@ -33,5 +34,8 @@ export function parseAppLink(url: string): AppLink {
   if (segs[0] === 'chats') return { kind: 'tab', tab: 'chats' };
   if (segs[0] === 'profile') return { kind: 'tab', tab: 'profile' };
   if (segs[0] === 'map') return { kind: 'tab', tab: 'map' };
+  if (segs[0] === 'discover' || segs[0] === 'kesfet') {
+    return { kind: 'tab', tab: 'discover' };
+  }
   return { kind: 'none' };
 }

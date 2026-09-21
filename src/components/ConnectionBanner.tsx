@@ -1,5 +1,7 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { colors, radius } from '../theme';
+import { getApiUrl } from '../api';
+import { radius, type ColorTokens } from '../theme';
+import { useThemedStyles } from '../theme/useThemedStyles';
 
 export function ConnectionBanner({
   visible,
@@ -8,12 +10,17 @@ export function ConnectionBanner({
   visible: boolean;
   onRetry: () => void;
 }) {
+  const styles = useThemedStyles(createStyles);
   if (!visible) return null;
   return (
     <View style={styles.wrap} pointerEvents="box-none">
       <View style={styles.card}>
         <Text style={styles.title}>Sunucuya ulaşılamadı</Text>
-        <Text style={styles.body}>İnternetini kontrol et. Mark ve sohbet şu an güncellenmiyor.</Text>
+        <Text style={styles.body}>
+          {typeof __DEV__ !== 'undefined' && __DEV__
+            ? `Yerel API: ${getApiUrl()}. Telefon ve PC aynı Wi‑Fi’de olmalı.`
+            : 'İnternetini kontrol et. Mark ve sohbet şu an güncellenmiyor.'}
+        </Text>
         <Pressable onPress={onRetry} style={styles.btn}>
           <Text style={styles.btnText}>Tekrar dene</Text>
         </Pressable>
@@ -22,7 +29,8 @@ export function ConnectionBanner({
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: ColorTokens) =>
+  StyleSheet.create({
   wrap: {
     position: 'absolute',
     left: 16,

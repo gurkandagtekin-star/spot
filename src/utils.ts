@@ -1,11 +1,140 @@
-import type { Pin } from './types';
+import type { Gender, Pin, PinKind } from './types';
+import { FREE_DAILY_PINS } from './pro/limits';
 
+export { FREE_DAILY_PINS } from './pro/limits';
 export const TWO_HOURS_MS = 2 * 60 * 60 * 1000;
-export const FREE_DAILY_PINS = 2;
 export const ME_ID = 'me';
+export const PIN_PHOTO_MARK = '[[PIN_PHOTO]]';
+export const PIN_COVERS_MARK = '[[PIN_COVERS]]';
+export const WALL_POSTS_MARK = '[[WALL_POSTS]]';
+export const PIN_SEATS_MARK = '[[SEATS]]';
+export const PIN_ANON_MARK = '[[ANON]]';
+
+const BIO_MARKS = [PIN_COVERS_MARK, WALL_POSTS_MARK];
+
+export function visibleBio(bio: string) {
+  const raw = String(bio || '');
+  const cuts = BIO_MARKS.map((m) => raw.indexOf(m)).filter((i) => i >= 0);
+  if (!cuts.length) return raw.trim();
+  return raw.slice(0, Math.min(...cuts)).trim();
+}
+
+export function bioMarkPayload(bio: string, mark: string) {
+  const raw = String(bio || '');
+  const start = raw.indexOf(mark);
+  if (start < 0) return '';
+  let rest = raw.slice(start + mark.length);
+  const next = BIO_MARKS.map((m) => rest.indexOf(m)).filter((i) => i >= 0);
+  if (next.length) rest = rest.slice(0, Math.min(...next));
+  return rest.trim();
+}
+
+export function pinCaption(text: string) {
+  let raw = String(text || '');
+  const photoAt = raw.indexOf(PIN_PHOTO_MARK);
+  if (photoAt >= 0) raw = raw.slice(0, photoAt);
+  return raw
+    .replace(/\n?\[\[SEATS\]\](2|3|4)/g, '')
+    .replace(/\n?\[\[ANON\]\]/g, '')
+    .trim();
+}
+
+export function pinEmbeddedAnon(text: string) {
+  return String(text || '').includes(PIN_ANON_MARK);
+}
+
+export function pinKindLabel(kind?: PinKind) {
+  if (kind === 'activity') return 'Aktivite';
+  if (kind === 'chat') return 'Sohbet';
+  return 'Takılalım';
+}
+
+export function withPinMeta(
+  text: string,
+  extra?: {
+    photoDataUrl?: string;
+    capacity?: 2 | 3 | 4;
+    anonymous?: boolean;
+  },
+) {
+  const photo = extra?.photoDataUrl || pinEmbeddedPhoto(text);
+  let body = pinCaption(text);
+  if (extra?.capacity) body += `\n${PIN_SEATS_MARK}${extra.capacity}`;
+  if (extra?.anonymous) body += `\n${PIN_ANON_MARK}`;
+  if (photo) body += `\n${PIN_PHOTO_MARK}${photo}`;
+  return body;
+}
+
+export function pinEmbeddedSeats(text: string): 2 | 3 | 4 | undefined {
+  const m = String(text || '').match(/\[\[SEATS\]\](2|3|4)/);
+  if (!m) return undefined;
+  const n = Number(m[1]);
+  return n === 2 || n === 3 || n === 4 ? n : undefined;
+}
+
+export function withPinSeats(text: string, capacity?: 2 | 3 | 4) {
+  return withPinMeta(text, { capacity });
+}
+
+export function pinFilledCount(pin: { coming?: number }) {
+  return 1 + Math.max(0, pin.coming || 0);
+}
+
+export function pinQuotaLabel(pin: { coming?: number; capacity?: 2 | 3 | 4 }) {
+  if (!pin.capacity) return 'İsteyen gelsin';
+  const filled = Math.min(pin.capacity, pinFilledCount(pin));
+  const open = Math.max(0, pin.capacity - filled);
+  if (open <= 0) return 'Kadro doldu';
+  if (open === 1) return '1 kişilik yer var';
+  return `${open} kişilik yer var`;
+}
+
+export function pinEmbeddedPhoto(text: string) {
+  const raw = String(text || '');
+  const i = raw.indexOf(PIN_PHOTO_MARK);
+  if (i < 0) return '';
+  return raw.slice(i + PIN_PHOTO_MARK.length).trim();
+}
+
+export function withPinPhoto(text: string, photoDataUrl?: string) {
+  const caption = pinCaption(text);
+  if (!photoDataUrl) return caption;
+  return `${caption}\n${PIN_PHOTO_MARK}${photoDataUrl}`;
+}
 
 export function uid(prefix: string) {
   return `${prefix}_${Math.random().toString(36).slice(2, 9)}`;
+}
+
+export function splitFullName(full: string) {
+  const parts = String(full || '')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  return {
+    firstName: parts[0] || '',
+    lastName: parts.slice(1).join(' '),
+  };
+}
+
+export function displayName(profile: {
+  name?: string;
+  firstName?: string;
+  lastName?: string;
+}) {
+  const composed = `${profile.firstName || ''} ${profile.lastName || ''}`.trim();
+  return composed || profile.name || '';
+}
+
+export const GENDER_OPTIONS: { id: Gender; label: string }[] = [
+  { id: 'woman', label: 'Kadın' },
+  { id: 'man', label: 'Erkek' },
+  { id: 'other', label: 'Diğer' },
+  { id: 'unspecified', label: 'Belirtmek istemiyorum' },
+];
+
+export function genderLabel(gender?: Gender) {
+  return GENDER_OPTIONS.find((g) => g.id === gender)?.label || '';
 }
 
 export function toRad(n: number) {
@@ -50,12 +179,17 @@ export function startOfDay(ts = Date.now()) {
   return d.getTime();
 }
 
-export function pinsLeftToday(pins: Pin[], authorId: string, now = Date.now()) {
+export function pinsLeftToday(
+  pins: Pin[],
+  authorId: string,
+  now = Date.now(),
+  limit = FREE_DAILY_PINS,
+) {
   const start = startOfDay(now);
   const used = pins.filter(
     (p) => p.authorId === authorId && p.createdAt >= start,
   ).length;
-  return Math.max(0, FREE_DAILY_PINS - used);
+  return Math.max(0, limit - used);
 }
 
 export function formatAgo(ts: number, now = Date.now()) {
@@ -123,7 +257,7 @@ export function filterPinsByRange(
 }
 
 export function livePins(pins: Pin[], now = Date.now()) {
-  return pins.filter((p) => p.expiresAt > now);
+  return pins.filter((p) => p.expiresAt > now && !p.retiredAt);
 }
 
 export function formatMeetAt(ts: number, now = Date.now()) {
@@ -149,9 +283,15 @@ export function tonightAt(hour: number, minute = 0) {
   return d.getTime();
 }
 
-export function instagramUrl(handle: string) {
-  const clean = handle.replace(/^@/, '');
-  return `https://instagram.com/${clean}`;
+export function usernameOf(person?: { username?: string; instagram?: string } | null) {
+  return String(person?.username || person?.instagram || '')
+    .replace(/^@/, '')
+    .trim();
+}
+
+export function atHandle(person?: { username?: string; instagram?: string } | null) {
+  const h = usernameOf(person);
+  return h ? `@${h}` : '';
 }
 
 export function normalizeHandle(raw: string) {
@@ -160,6 +300,6 @@ export function normalizeHandle(raw: string) {
     .replace(/^@/, '')
     .toLowerCase();
   if (!h) return '';
-  if (!/^[a-z0-9._]{1,30}$/.test(h)) return null;
+  if (!/^[a-z0-9._]{2,30}$/.test(h)) return null;
   return h;
 }

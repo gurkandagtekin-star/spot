@@ -37,11 +37,11 @@ function mountAdmin(app, { db, save }) {
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     res.send(`<!DOCTYPE html><html lang="tr"><head><meta charset="utf-8"/><title>Şikayetler · Mark Date</title>
       <style>
-        body { font-family: ui-sans-serif, system-ui, sans-serif; background:#F6F0E6; color:#1F1A17; margin:24px; }
-        table { width:100%; border-collapse: collapse; background:#FFFCF7; }
-        th, td { border:1px solid #E8DCCE; padding:8px 10px; text-align:left; font-size:13px; }
-        th { background:#FBF6EE; }
-        button { background:#E35D4A; color:#fff; border:0; border-radius:8px; padding:6px 10px; font-weight:800; cursor:pointer; }
+        body { font-family: ui-sans-serif, system-ui, sans-serif; background:#0A0A0A; color:#F5F5F5; margin:24px; }
+        table { width:100%; border-collapse: collapse; background:#121212; }
+        th, td { border:1px solid #2A2A2A; padding:8px 10px; text-align:left; font-size:13px; }
+        th { background:#1A1A1A; }
+        button { background:#FF5E97; color:#fff; border:0; border-radius:8px; padding:6px 10px; font-weight:800; cursor:pointer; }
       </style></head><body>
       <h1>Şikayet kuyruğu</h1>
       <p>${rows.length} kayıt. Kapalıları da görürsün; Kapat durumu günceller.</p>
@@ -71,4 +71,4 @@ function esc(v) {
     .replace(/"/g, '&quot;');
 }
 
-module.exports = { mountAdmin };
+module.exports = { mountAdmin, adminOk };

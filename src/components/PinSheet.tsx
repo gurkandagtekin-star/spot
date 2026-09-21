@@ -1,16 +1,12 @@
-import {
-  Linking,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Avatar } from './Avatar';
 import { BadgeRow } from './BadgeRow';
-import { colors, radius } from '../theme';
+import { DragSheet } from './DragSheet';
+import { useAlert } from '../context/AlertContext';
+import { radius, type ColorTokens } from '../theme';
+import { useThemedStyles } from '../theme/useThemedStyles';
 import type { JoinRequest, Pin, Profile } from '../types';
-import { formatMeetAt, instagramUrl, remainingLabel } from '../utils';
+import { formatMeetAt, genderLabel, atHandle, pinFilledCount, pinKindLabel, pinQuotaLabel, remainingLabel } from '../utils';
 
 type Props = {
   visible: boolean;
@@ -23,10 +19,12 @@ type Props = {
   onClose: () => void;
   onJoin: () => Promise<string | null> | string | null;
   onDecide: (requestId: string, accept: boolean) => void;
+  onWithdraw?: () => void;
   onOpenChat?: () => void;
   onClosePin?: () => void;
   onBlock?: () => void;
   onReport?: (reason: string) => void;
+  onOpenProfile?: (userId: string) => void;
 };
 
 export function PinSheet({
@@ -40,59 +38,93 @@ export function PinSheet({
   onClose,
   onJoin,
   onDecide,
+  onWithdraw,
   onOpenChat,
   onClosePin,
   onBlock,
   onReport,
+  onOpenProfile,
 }: Props) {
+  const { showAlert } = useAlert();
+  const styles = useThemedStyles(createStyles);
+
   if (!visible || !pin || !author) return null;
 
+  const masked = Boolean(pin.anonymous) && !mine;
+  const shownName = masked ? 'Anonim' : author.name;
+  const shownPhoto = masked ? undefined : author.photoUrl;
+  const seatsFull = Boolean(pin.capacity && pinFilledCount(pin) >= pin.capacity);
   const joinLabel =
     myRequest?.status === 'pending'
       ? 'Onay bekleniyor'
       : myRequest?.status === 'accepted'
         ? 'Sohbet açık'
-        : 'Selam gönder';
+        : seatsFull
+          ? 'Kadro doldu'
+          : 'Selam gönder';
 
   return (
-    <View style={styles.overlay}>
-        <Pressable style={styles.backdrop} onPress={onClose} />
-        <View style={styles.sheet}>
-          <ScrollView showsVerticalScrollIndicator={false}>
+    <DragSheet visible onClose={onClose}>
             <Text style={styles.kicker}>
-              {pin.kind === 'activity' ? 'Aktivite' : 'Takılalım'} · {distance} ·{' '}
-              {remainingLabel(pin.expiresAt)}
+              {pinKindLabel(pin.kind)} · {distance} · {remainingLabel(pin.expiresAt)}
             </Text>
-            {pin.placeName ? (
+            {pin.kind !== 'chat' && pin.placeName ? (
               <Text style={styles.place}>{pin.placeName}</Text>
             ) : null}
             <Text style={styles.meet}>
-              {formatMeetAt(pin.meetAt)}
-              {pin.coming ? ` · ${pin.coming} kişi geliyor` : ''}
+              {pin.kind === 'chat'
+                ? `Yalnızca mesaj · ${pinQuotaLabel(pin)}`
+                : `${formatMeetAt(pin.meetAt)} · ${pinQuotaLabel(pin)}`}
             </Text>
-            <Text style={styles.text}>{pin.text}</Text>
-            <View style={styles.card}>
-              <Avatar name={author.name} uri={author.photoUrl} size={48} />
-              <View style={{ flex: 1 }}>
-                <Text style={styles.name}>{author.name}</Text>
-                {author.instagram ? (
-                  <Text style={styles.handle}>@{author.instagram}</Text>
-                ) : null}
-                <Text style={styles.bio}>{author.bio}</Text>
-                <BadgeRow badges={author.badges} socialLeader={author.socialLeader} />
-                <Text style={styles.tags}>{(author.interests || []).join(' · ')}</Text>
+            {pin.photoUrl ? (
+              <View style={styles.coverFrame}>
+                <Image
+                  source={{ uri: pin.photoUrl }}
+                  style={styles.cover}
+                  resizeMode="contain"
+                />
               </View>
-            </View>
-            {author.instagram ? (
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Instagram profilini aç"
-                style={styles.ig}
-                onPress={() => Linking.openURL(instagramUrl(author.instagram))}
-              >
-                <Text style={styles.igText}>Instagram’da aç</Text>
-              </Pressable>
             ) : null}
+            <Text style={styles.text}>{pin.text}</Text>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={masked ? 'Anonim profil' : `${shownName} duvarı`}
+              style={styles.card}
+              onPress={() => {
+                if (masked) {
+                  showAlert({
+                    title: 'Anonim mark',
+                    message: 'Bu mark anonim olarak oluşturulmuş. Profil duvarı gizli.',
+                  });
+                  return;
+                }
+                onOpenProfile?.(author.id);
+              }}
+            >
+              <Avatar name={shownName} uri={shownPhoto} size={48} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.name}>{shownName}</Text>
+                {mine && pin.anonymous ? (
+                  <Text style={styles.handleTxt}>Haritada Anonim görünüyorsun</Text>
+                ) : null}
+                {!masked && (author.age || author.gender) ? (
+                  <Text style={styles.handleTxt}>
+                    {[author.age ? `${author.age}` : '', genderLabel(author.gender)]
+                      .filter(Boolean)
+                      .join(' · ')}
+                  </Text>
+                ) : null}
+                {!masked && atHandle(author) ? (
+                  <Text style={styles.handleTxt}>{atHandle(author)}</Text>
+                ) : null}
+                {!masked ? (
+                  <BadgeRow badges={author.badges} socialLeader={author.socialLeader} />
+                ) : null}
+                {!masked ? (
+                  <Text style={styles.tags}>Duvarı gör →</Text>
+                ) : null}
+              </View>
+            </Pressable>
             {mine ? (
               <View style={{ gap: 10, marginTop: 8 }}>
                 <Text style={styles.section}>İstekler</Text>
@@ -103,9 +135,9 @@ export function PinSheet({
                     <View key={request.id} style={styles.req}>
                       <View style={{ flex: 1 }}>
                         <Text style={styles.name}>{from.name}</Text>
-                        <Text style={styles.handle}>
-                          {from.instagram
-                            ? `@${from.instagram} merhaba dedi`
+                        <Text style={styles.handleTxt}>
+                          {atHandle(from)
+                            ? `${atHandle(from)} merhaba dedi`
                             : `${from.name} merhaba dedi`}
                         </Text>
                       </View>
@@ -129,7 +161,7 @@ export function PinSheet({
                           </Pressable>
                         </>
                       ) : (
-                        <Text style={styles.handle}>
+                        <Text style={styles.handleTxt}>
                           {request.status === 'accepted' ? 'onaylandı' : 'reddedildi'}
                         </Text>
                       )}
@@ -149,15 +181,20 @@ export function PinSheet({
               <Pressable style={styles.cta} onPress={onOpenChat}>
                 <Text style={styles.ctaText}>Sohbete git</Text>
               </Pressable>
+            ) : myRequest?.status === 'pending' ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="İsteği geri çek"
+                style={styles.danger}
+                onPress={() => onWithdraw?.()}
+              >
+                <Text style={styles.dangerText}>İsteği geri çek</Text>
+              </Pressable>
             ) : (
               <Pressable
-                style={[
-                  styles.cta,
-                  myRequest?.status === 'pending' && styles.ctaOff,
-                ]}
+                style={[styles.cta, seatsFull && styles.ctaOff]}
                 onPress={() => {
-                  if (myRequest?.status === 'pending') return;
-                  void onJoin();
+                  if (!seatsFull) void onJoin();
                 }}
               >
                 <Text style={styles.ctaText}>{joinLabel}</Text>
@@ -181,116 +218,107 @@ export function PinSheet({
                 Direkt mesaj yok. Karşı taraf onaylarsa kısa bir sohbet açılır.
               </Text>
             ) : null}
-          </ScrollView>
-        </View>
-    </View>
+    </DragSheet>
   );
 }
 
-const styles = StyleSheet.create({
-  overlay: {
-    ...StyleSheet.absoluteFillObject,
-    justifyContent: 'flex-end',
-    zIndex: 30,
-  },
-  backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: colors.overlay },
-  sheet: {
-    maxHeight: '78%',
-    backgroundColor: colors.paper,
-    borderTopLeftRadius: radius.lg,
-    borderTopRightRadius: radius.lg,
-    padding: 22,
-    paddingBottom: 28,
-  },
-  kicker: { color: colors.muted, fontWeight: '700', fontSize: 13, marginBottom: 8 },
-  place: { color: colors.ink, fontWeight: '800', fontSize: 16, marginBottom: 4 },
-  meet: { color: colors.teal, fontWeight: '700', fontSize: 13, marginBottom: 10 },
-  text: { fontSize: 22, fontWeight: '800', color: colors.ink, marginBottom: 16, lineHeight: 28 },
-  card: {
-    flexDirection: 'row',
-    gap: 12,
-    backgroundColor: colors.paperSoft,
-    borderRadius: radius.md,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: colors.line,
-  },
-  avatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: colors.coralSoft,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarText: { fontWeight: '800', color: colors.coral, fontSize: 20 },
-  name: { fontWeight: '800', color: colors.ink, fontSize: 16 },
-  handle: { color: colors.muted, marginTop: 2 },
-  bio: { color: colors.ink, marginTop: 6, lineHeight: 20 },
-  tags: { color: colors.teal, marginTop: 6, fontWeight: '700', fontSize: 12 },
-  ig: {
-    marginTop: 12,
-    borderWidth: 1,
-    borderColor: colors.instagram,
-    borderRadius: radius.md,
-    paddingVertical: 12,
-    alignItems: 'center',
-  },
-  igText: { color: colors.instagram, fontWeight: '800' },
-  cta: {
-    marginTop: 12,
-    backgroundColor: colors.coral,
-    borderRadius: radius.md,
-    paddingVertical: 14,
-    alignItems: 'center',
-  },
-  ctaOff: { backgroundColor: colors.muted },
-  ctaText: { color: '#fff', fontWeight: '800', fontSize: 16 },
-  hint: { marginTop: 10, color: colors.muted, fontSize: 13, lineHeight: 18 },
-  section: { fontWeight: '800', color: colors.ink, fontSize: 16 },
-  empty: { color: colors.muted },
-  req: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    padding: 12,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.line,
-    backgroundColor: colors.paperSoft,
-  },
-  smallCta: {
-    backgroundColor: colors.coral,
-    borderRadius: radius.pill,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  smallCtaText: { color: '#fff', fontWeight: '800', fontSize: 12 },
-  smallGhost: {
-    borderWidth: 1,
-    borderColor: colors.line,
-    borderRadius: radius.pill,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  smallGhostText: { color: colors.muted, fontWeight: '700', fontSize: 12 },
-  danger: {
-    marginTop: 4,
-    borderWidth: 1,
-    borderColor: colors.warning,
-    borderRadius: radius.md,
-    paddingVertical: 12,
-    alignItems: 'center',
-  },
-  dangerText: { color: colors.warning, fontWeight: '800' },
-  safety: { flexDirection: 'row', gap: 8, marginTop: 12 },
-  safetyBtn: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: colors.line,
-    borderRadius: radius.pill,
-    paddingVertical: 10,
-    alignItems: 'center',
-  },
-  safetyText: { color: colors.muted, fontWeight: '700', fontSize: 13 },
-});
+const createStyles = (colors: ColorTokens) =>
+  StyleSheet.create({
+    kicker: { color: colors.muted, fontWeight: '700', fontSize: 13, marginBottom: 8 },
+    place: { color: colors.ink, fontWeight: '800', fontSize: 16, marginBottom: 4 },
+    meet: { color: colors.teal, fontWeight: '700', fontSize: 13, marginBottom: 10 },
+    coverFrame: {
+      width: '100%',
+      aspectRatio: 4 / 5,
+      maxHeight: 360,
+      borderRadius: 16,
+      marginBottom: 14,
+      backgroundColor: colors.paperSoft,
+      overflow: 'hidden',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    cover: {
+      width: '100%',
+      height: '100%',
+    },
+    text: { fontSize: 22, fontWeight: '800', color: colors.ink, marginBottom: 16, lineHeight: 28 },
+    card: {
+      flexDirection: 'row',
+      gap: 12,
+      backgroundColor: 'rgba(10, 8, 20, 0.55)',
+      borderRadius: radius.md,
+      padding: 14,
+      borderWidth: 1,
+      borderColor: 'rgba(255, 255, 255, 0.12)',
+    },
+    name: { fontWeight: '800', color: colors.ink, fontSize: 16 },
+    handleTxt: { color: colors.muted, marginTop: 2 },
+    bio: { color: colors.ink, marginTop: 6, lineHeight: 20 },
+    tags: { color: colors.teal, marginTop: 6, fontWeight: '700', fontSize: 12 },
+    ig: {
+      marginTop: 12,
+      borderWidth: 1,
+      borderColor: colors.instagram,
+      borderRadius: radius.md,
+      paddingVertical: 12,
+      alignItems: 'center',
+    },
+    igText: { color: colors.instagram, fontWeight: '800' },
+    cta: {
+      marginTop: 12,
+      backgroundColor: colors.coral,
+      borderRadius: radius.md,
+      paddingVertical: 14,
+      alignItems: 'center',
+    },
+    ctaOff: { backgroundColor: colors.muted },
+    ctaText: { color: '#fff', fontWeight: '800', fontSize: 16 },
+    hint: { marginTop: 10, color: colors.muted, fontSize: 13, lineHeight: 18 },
+    section: { fontWeight: '800', color: colors.ink, fontSize: 16 },
+    empty: { color: colors.muted },
+    req: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      padding: 12,
+      borderRadius: radius.md,
+      borderWidth: 1,
+      borderColor: 'rgba(255, 255, 255, 0.12)',
+      backgroundColor: 'rgba(10, 8, 20, 0.55)',
+    },
+    smallCta: {
+      backgroundColor: colors.coral,
+      borderRadius: radius.pill,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+    },
+    smallCtaText: { color: '#fff', fontWeight: '800', fontSize: 12 },
+    smallGhost: {
+      borderWidth: 1,
+      borderColor: colors.line,
+      borderRadius: radius.pill,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+    },
+    smallGhostText: { color: colors.muted, fontWeight: '700', fontSize: 12 },
+    danger: {
+      marginTop: 4,
+      borderWidth: 1,
+      borderColor: colors.warning,
+      borderRadius: radius.md,
+      paddingVertical: 12,
+      alignItems: 'center',
+    },
+    dangerText: { color: colors.warning, fontWeight: '800' },
+    safety: { flexDirection: 'row', gap: 8, marginTop: 12 },
+    safetyBtn: {
+      flex: 1,
+      borderWidth: 1,
+      borderColor: colors.line,
+      borderRadius: radius.pill,
+      paddingVertical: 10,
+      alignItems: 'center',
+    },
+    safetyText: { color: colors.muted, fontWeight: '700', fontSize: 13 },
+  });

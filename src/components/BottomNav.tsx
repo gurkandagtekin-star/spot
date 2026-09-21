@@ -1,5 +1,9 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { colors, radius } from '../theme';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { ChatTabIcon, DiscoverTabIcon, MapTabIcon, ProfileTabIcon } from './TabIcons';
+import { useTheme } from '../theme/ThemeContext';
+import { useThemedStyles } from '../theme/useThemedStyles';
+import type { ColorTokens } from '../theme';
 import type { Screen } from '../types';
 
 type Props = {
@@ -8,17 +12,26 @@ type Props = {
   chatBadge?: number;
 };
 
-const items: { key: Exclude<Screen, 'chat'>; label: string }[] = [
-  { key: 'map', label: 'Harita' },
-  { key: 'chats', label: 'Eşleşme' },
-  { key: 'profile', label: 'Profil' },
+const items: {
+  key: Exclude<Screen, 'chat'>;
+  label: string;
+  Icon: typeof MapTabIcon;
+}[] = [
+  { key: 'discover', label: 'Keşfet', Icon: DiscoverTabIcon },
+  { key: 'map', label: 'Harita', Icon: MapTabIcon },
+  { key: 'chats', label: 'Eşleşme', Icon: ChatTabIcon },
+  { key: 'profile', label: 'Profil', Icon: ProfileTabIcon },
 ];
 
 export function BottomNav({ current, onChange, chatBadge = 0 }: Props) {
+  const styles = useThemedStyles(createStyles);
+  const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
   return (
-    <View style={styles.wrap}>
+    <View style={[styles.wrap, { paddingBottom: Math.max(insets.bottom - 6, 6) }]}>
       {items.map((item) => {
         const active = current === item.key;
+        const color = active ? colors.ink : colors.muted;
         return (
           <Pressable
             key={item.key}
@@ -27,13 +40,11 @@ export function BottomNav({ current, onChange, chatBadge = 0 }: Props) {
             onPress={() => onChange(item.key)}
             style={styles.item}
           >
-            <View style={styles.itemInner}>
-              <Text style={[styles.label, active && styles.active]}>{item.label}</Text>
-              {active ? <View style={styles.dot} /> : null}
-            </View>
+            <item.Icon color={color} filled={active} size={24} />
+            <Text style={[styles.label, active && styles.active]}>{item.label}</Text>
             {item.key === 'chats' && chatBadge > 0 ? (
               <View style={styles.badge}>
-                <Text style={styles.badgeText}>{chatBadge}</Text>
+                <Text style={styles.badgeText}>{chatBadge > 9 ? '9+' : chatBadge}</Text>
               </View>
             ) : null}
           </Pressable>
@@ -43,54 +54,46 @@ export function BottomNav({ current, onChange, chatBadge = 0 }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
-  wrap: {
-    flexDirection: 'row',
-    backgroundColor: colors.paper,
-    borderTopWidth: 1,
-    borderTopColor: colors.line,
-    paddingHorizontal: 8,
-    paddingTop: 12,
-    paddingBottom: 18,
-  },
-  item: {
-    flex: 1,
-    alignItems: 'center',
-    paddingVertical: 8,
-    borderRadius: radius.md,
-    position: 'relative',
-  },
-  itemInner: { alignItems: 'center', gap: 5 },
-  label: {
-    fontSize: 13,
-    color: colors.muted,
-    fontWeight: '700',
-    letterSpacing: 0.2,
-  },
-  active: {
-    color: colors.ink,
-  },
-  dot: {
-    width: 5,
-    height: 5,
-    borderRadius: 3,
-    backgroundColor: colors.coral,
-  },
-  badge: {
-    position: 'absolute',
-    top: 2,
-    right: '28%',
-    minWidth: 18,
-    height: 18,
-    borderRadius: 9,
-    backgroundColor: colors.coral,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 4,
-  },
-  badgeText: {
-    color: '#fff',
-    fontSize: 10,
-    fontWeight: '700',
-  },
-});
+const createStyles = (colors: ColorTokens) =>
+  StyleSheet.create({
+    wrap: {
+      flexDirection: 'row',
+      backgroundColor: colors.paper,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.line,
+      paddingHorizontal: 8,
+      paddingTop: 6,
+    },
+    item: {
+      flex: 1,
+      alignItems: 'center',
+      position: 'relative',
+      gap: 2,
+      paddingVertical: 2,
+    },
+    label: {
+      fontSize: 10,
+      color: colors.muted,
+      fontWeight: '700',
+    },
+    active: { color: colors.ink, fontWeight: '800' },
+    badge: {
+      position: 'absolute',
+      top: -2,
+      right: '28%',
+      minWidth: 16,
+      height: 16,
+      borderRadius: 8,
+      backgroundColor: colors.coral,
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingHorizontal: 3,
+      borderWidth: 1.5,
+      borderColor: colors.paper,
+    },
+    badgeText: {
+      color: '#fff',
+      fontSize: 9,
+      fontWeight: '800',
+    },
+  });

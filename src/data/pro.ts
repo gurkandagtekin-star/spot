@@ -17,27 +17,31 @@ export const PRO_PLANS = [
 
 export const PRO_FEATURES = [
   {
-    title: 'Sınırsız mark',
-    text: 'Günde 2 hak yok. İstediğin kadar buluşma noktası koy.',
+    title: '12 mark / gün',
+    text: 'Ücretsiz 2 hak. Reklamla +2. Pro’da günde 12 işaret.',
   },
   {
-    title: 'Öne çıkan mark',
-    text: 'Haritada altın çerçeve. Yakındakiler seni önce görür.',
+    title: 'Sohbet noktası',
+    text: 'Yüz yüze şart değil. Yalnızca mesaj odaklı mark.',
   },
   {
-    title: 'Tüm şehir',
-    text: 'Sadece mahalle değil; şehirdeki açık mark’lar listelenir.',
+    title: '16 saat haritada',
+    text: 'Pro mark 16 saat kalır. Ücretsiz 2 saat.',
   },
   {
-    title: 'Sohbet +24 saat',
-    text: 'Mark bitince sohbet hemen kapanmaz. Pro’da bir gün daha açık kalır.',
+    title: 'Öne çıkan ışıltı',
+    text: 'Haritada mor-turuncu neon çerçeve. Anonim paylaşım da Pro.',
   },
   {
-    title: 'Anında istek uyarısı',
-    text: 'Selam geldiğinde haritada ve sohbet rozetinde kaçırmazsın.',
+    title: 'Semt ve tüm şehir',
+    text: 'Ücretsiz en fazla 15 km. Pro Semt ve Tümü’yü açar.',
+  },
+  {
+    title: 'Sohbet 24 saat',
+    text: 'Eşleşme sohbeti Pro’da bir gün açık kalır.',
   },
   {
     title: 'Reklamsız',
-    text: 'Teaser ve kota kartları kaybolur. Sade harita.',
+    text: 'Banner ve geçiş reklamları kapanır.',
   },
 ];

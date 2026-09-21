@@ -1,5 +1,6 @@
 import { Image, StyleSheet, Text, View } from 'react-native';
-import { colors } from '../theme';
+import type { ColorTokens } from '../theme';
+import { useThemedStyles } from '../theme/useThemedStyles';
 
 const TILE = 'https://tile.openstreetmap.org/15/19026/12286.png';
 const TILE_R = 'https://tile.openstreetmap.org/15/19027/12286.png';
@@ -7,6 +8,7 @@ const TILE_B = 'https://tile.openstreetmap.org/15/19026/12287.png';
 const TILE_BR = 'https://tile.openstreetmap.org/15/19027/12287.png';
 
 export function SignupMapPreview() {
+  const styles = useThemedStyles(createStyles);
   return (
     <View style={styles.wrap} pointerEvents="none" accessibilityElementsHidden>
       <View style={styles.grid}>
@@ -31,7 +33,7 @@ export function SignupMapPreview() {
 
       <View style={[styles.bubble, styles.b2, styles.activity]}>
         <View style={[styles.ava, styles.avaTeal]}>
-          <Text style={[styles.avaT, { color: colors.teal }]}>N</Text>
+          <Text style={[styles.avaT, styles.avaTTeal]}>N</Text>
         </View>
         <View style={{ flexShrink: 1 }}>
           <Text style={styles.txt} numberOfLines={1}>
@@ -54,9 +56,10 @@ export function SignupMapPreview() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: ColorTokens) =>
+  StyleSheet.create({
   wrap: {
-    height: 292,
+    height: 220,
     marginHorizontal: 16,
     marginTop: 6,
     borderRadius: 28,
@@ -107,6 +110,7 @@ const styles = StyleSheet.create({
   },
   avaTeal: { backgroundColor: colors.tealSoft },
   avaT: { color: colors.coral, fontWeight: '800', fontSize: 14 },
+  avaTTeal: { color: colors.teal },
   txt: { fontWeight: '700', color: colors.ink, fontSize: 12.5 },
   meta: { color: colors.muted, fontSize: 10.5, fontWeight: '700', marginTop: 2 },
   you: {

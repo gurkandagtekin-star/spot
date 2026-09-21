@@ -12,7 +12,8 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_EAS_PROJECT_ID": "ca7f4681-479e-4d40-8a75-eed95e0a1e3c"
+        "EXPO_PUBLIC_EAS_PROJECT_ID": "ca7f4681-479e-4d40-8a75-eed95e0a1e3c",
+        "EXPO_PUBLIC_API_URL": "https://mark-date-api.onrender.com"
       }
     },
     "preview": {
@@ -20,10 +21,21 @@
       "channel": "preview",
       "android": {
         "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://mark-date-api.onrender.com"
       }
     },
     "production": {
-      "channel": "production"
+      "channel": "production",
+      "distribution": "store",
+      "autoIncrement": true,
+      "android": {
+        "buildType": "app-bundle"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://mark-date-api.onrender.com"
+      }
     }
   },
   "submit": {

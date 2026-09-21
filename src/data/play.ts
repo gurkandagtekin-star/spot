@@ -76,11 +76,20 @@ export function suggestionsFor(placeName?: string, kind?: PinKind) {
             : 'En yakın parkta 20 dk yürüyüş.',
           'Kısa oyun / iddia: kim kaybeder, kahveyi o ısmarlar.',
         ]
-      : [
+      : kind === 'chat'
+        ? [
+            'Yüz yüze şart değil, buradan yazışalım.',
+            'Kısa sohbet: ne izliyorsun / ne dinliyorsun?',
+          ]
+        : [
           place
             ? `${place}’te birer kahve, 15 dakika sohbet.`
             : 'En yakın kahvecide birer kahve.',
           'Aynı sipariş, hangisi daha iyi iddiası.',
         ];
-  return [...extra, 'Üç soru, sonra yüz yüze plan.'].slice(0, 3);
+  return (
+    kind === 'chat'
+      ? [...extra, 'Üç soru, sonra devam edelim mi?']
+      : [...extra, 'Üç soru, sonra yüz yüze plan.']
+  ).slice(0, 3);
 }

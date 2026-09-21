@@ -11,9 +11,12 @@ function emptyDb() {
     chats: [],
     tokens: {},
     reports: [],
+    blocks: [],
     checkins: [],
     safeShares: [],
     igTickets: {},
+    follows: [],
+    places: [],
   };
 }
 

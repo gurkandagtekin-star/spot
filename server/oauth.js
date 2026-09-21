@@ -3,6 +3,8 @@ const fs = require('fs');
 const path = require('path');
 const express = require('express');
 
+const { assignUsername } = require('./username');
+
 function htmlPage({ title, inner }) {
   return `<!DOCTYPE html>
 <html lang="tr">
@@ -15,21 +17,21 @@ function htmlPage({ title, inner }) {
     body {
       margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
       font-family: ui-sans-serif, system-ui, Segoe UI, sans-serif;
-      background: #E8DFD2; color: #1F1A17;
+      background: #0A0A0A; color: #F5F5F5;
     }
     .card {
-      width: 100%; max-width: 440px; background: #FFFCF7;
+      width: 100%; max-width: 440px; background: #121212;
       border-radius: 28px; padding: 28px 24px 24px; margin: 16px;
-      border: 1px solid #E8DCCE;
+      border: 1px solid #2A2A2A;
     }
     h1 { font-size: 22px; margin: 0 0 8px; }
-    p { color: #7A7168; line-height: 1.5; margin: 0 0 14px; font-size: 14px; }
+    p { color: rgba(255,255,255,0.62); line-height: 1.5; margin: 0 0 14px; font-size: 14px; }
     code, .uri {
-      display: block; background: #FBF6EE; border: 1px solid #E8DCCE; border-radius: 12px;
+      display: block; background: #1A1A1A; border: 1px solid #2A2A2A; border-radius: 12px;
       padding: 10px 12px; font-size: 12px; word-break: break-all; margin: 8px 0 16px;
     }
-    .brand { font-size: 12px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; color: #E35D4A; margin-bottom: 10px; }
-    ol { color: #1F1A17; padding-left: 18px; margin: 0 0 8px; }
+    .brand { font-size: 12px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; color: #FF5E97; margin-bottom: 10px; }
+    ol { color: #F5F5F5; padding-left: 18px; margin: 0 0 8px; }
     li { margin-bottom: 8px; line-height: 1.4; font-size: 14px; }
     label { display: block; font-weight: 700; font-size: 13px; margin: 10px 0 6px; }
     input {
@@ -46,20 +48,47 @@ function htmlPage({ title, inner }) {
 </html>`;
 }
 
+function sanitizeRedirect(redirect) {
+  const raw = String(redirect || 'http://localhost:8081').trim();
+  if (/^(markdate|exp|exp\+[\w.-]+):/i.test(raw)) return raw.replace(/'/g, '');
+  try {
+    const u = new URL(raw);
+    if (u.protocol === 'http:' || u.protocol === 'https:') {
+      return raw.replace(/'/g, '');
+    }
+  } catch {
+    /* ignore */
+  }
+  return 'http://localhost:8081';
+}
+
+function isNativeAppRedirect(redirect) {
+  return /^(markdate|exp|exp\+[\w.-]+):/i.test(String(redirect || ''));
+}
+
 function finishRedirect(token, redirect) {
-  const safeRedirect = String(redirect || 'http://localhost:8081').replace(/'/g, '');
+  const safeRedirect = sanitizeRedirect(redirect);
   const sep = safeRedirect.includes('?') ? '&' : '?';
-  return `<!DOCTYPE html><html lang="tr"><head><meta charset="utf-8"><title>Mark Date</title></head>
-<body style="font-family:sans-serif;background:#F6F0E6;display:flex;align-items:center;justify-content:center;height:100vh;">
-<p>Giriş tamam. Bu pencere kapanabilir.</p>
+  const dest = `${safeRedirect}${sep}spot_token=${encodeURIComponent(token)}`;
+  const native = isNativeAppRedirect(safeRedirect);
+  const href = dest.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+  return `<!DOCTYPE html><html lang="tr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Mark Date</title></head>
+<body style="font-family:sans-serif;background:#0A0A0A;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;">
+<div style="text-align:center;padding:24px;max-width:360px;">
+<p style="font-weight:800;color:#1F1A17;">Giriş tamam.</p>
+<p style="color:#7A7168;font-size:14px;line-height:1.45;">Uygulama kendiliğinden açılmazsa aşağıdaki bağlantıya bas.</p>
+<p><a href="${href}" style="display:inline-block;background:#E35D4A;color:#fff;text-decoration:none;font-weight:800;padding:12px 18px;border-radius:999px;">Uygulamaya dön</a></p>
+</div>
 <script>
   var token = ${JSON.stringify(token)};
+  var dest = ${JSON.stringify(dest)};
+  var native = ${native ? 'true' : 'false'};
   var payload = { type: 'SPOT_AUTH', token: token };
-  if (window.opener) {
+  if (!native && window.opener) {
     window.opener.postMessage(payload, '*');
     window.close();
   } else {
-    location.replace(${JSON.stringify(safeRedirect)} + ${JSON.stringify(sep)} + 'spot_token=' + encodeURIComponent(token));
+    location.replace(dest);
   }
 </script>
 </body></html>`;
@@ -101,13 +130,48 @@ function instagramAppSecret() {
 }
 
 function publicBase(req) {
+  const host = String(req.get?.('host') || req.headers.host || '')
+    .split(',')[0]
+    .trim();
+  const loopback = (value) => {
+    try {
+      const u = new URL(value.includes('://') ? value : `http://${value}`);
+      return u.hostname === 'localhost' || u.hostname === '127.0.0.1';
+    } catch {
+      return /localhost|127\.0\.0\.1/i.test(String(value || ''));
+    }
+  };
+  if (host && !loopback(host)) {
+    const proto = String(req.headers['x-forwarded-proto'] || req.protocol || 'http')
+      .split(',')[0]
+      .trim();
+    return `${proto}://${host}`;
+  }
   const env = String(process.env.API_PUBLIC_URL || '').replace(/\/$/, '');
-  if (env) return env;
-  return `${req.protocol}://${req.get('host')}`;
+  if (env && !loopback(env)) return env;
+  if (host) {
+    const proto = String(req.protocol || 'http').split(',')[0].trim();
+    return `${proto}://${host}`;
+  }
+  return env || 'http://127.0.0.1:3001';
 }
 
 function callbackUrl(req, path) {
   return `${publicBase(req)}${path}`;
+}
+
+function googleRedirectForClient(req) {
+  const fromClient = String(req.query.redirect_uri || req.query.redirect || '').trim();
+  if (/^markdate:/i.test(fromClient)) return fromClient;
+  try {
+    const u = new URL(fromClient);
+    if (u.protocol === 'https:' && /auth\.expo\.io$/i.test(u.hostname)) {
+      return fromClient.replace(/\/$/, '');
+    }
+  } catch {
+    /* sunucu callback */
+  }
+  return callbackUrl(req, '/auth/google/callback');
 }
 
 function issueToken(db, save, userId) {
@@ -135,7 +199,7 @@ function finishBindScript(token, redirect) {
   const safeRedirect = String(redirect || 'http://localhost:8081').replace(/'/g, '');
   const sep = safeRedirect.includes('?') ? '&' : '?';
   return `<!DOCTYPE html><html lang="tr"><head><meta charset="utf-8"><title>Mark Date</title></head>
-<body style="font-family:sans-serif;background:#F6F0E6;display:flex;align-items:center;justify-content:center;height:100vh;">
+<body style="font-family:sans-serif;background:#0A0A0A;display:flex;align-items:center;justify-content:center;height:100vh;">
 <p>Instagram bağlandı. Bu pencere kapanabilir.</p>
 <script>
   var token = ${JSON.stringify(token)};
@@ -286,6 +350,48 @@ function instagramLoginUrl(cb, stateObj) {
   return url.toString();
 }
 
+function isPrivateHostname(hostname) {
+  const h = String(hostname || '')
+    .replace(/^\[|\]$/g, '')
+    .toLowerCase();
+  if (!h || h === 'localhost' || h === '127.0.0.1' || h === '::1' || h === '0.0.0.0') {
+    return false;
+  }
+  if (/^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(h)) return true;
+  if (/^192\.168\.\d{1,3}\.\d{1,3}$/.test(h)) return true;
+  if (/^172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}$/.test(h)) return true;
+  return false;
+}
+
+function needsGoogleDeviceParams(redirectUri) {
+  try {
+    const u = new URL(redirectUri);
+    if (u.protocol === 'exp:' || u.protocol === 'exps:') return true;
+    return isPrivateHostname(u.hostname);
+  } catch {
+    return false;
+  }
+}
+
+function googleDeviceParams(redirectUri, req) {
+  const deviceId = String(req?.query?.device_id || req?.body?.device_id || '').trim();
+  const deviceName = String(req?.query?.device_name || req?.body?.device_name || '').trim();
+  if (!needsGoogleDeviceParams(redirectUri) && !deviceId) return null;
+  return {
+    device_id:
+      deviceId ||
+      crypto.createHash('sha256').update(`markdate:${redirectUri}`).digest('hex').slice(0, 32),
+    device_name: (deviceName || 'Mark Date').slice(0, 64),
+  };
+}
+
+function applyGoogleDeviceParams(url, redirectUri, req) {
+  const extras = googleDeviceParams(redirectUri, req);
+  if (!extras) return;
+  url.searchParams.set('device_id', extras.device_id);
+  url.searchParams.set('device_name', extras.device_name);
+}
+
 function parseState(raw) {
   try {
     return JSON.parse(Buffer.from(String(raw || ''), 'base64url').toString('utf8'));
@@ -380,24 +486,88 @@ function upsertGoogleUser(db, uid, profile) {
     user = {
       id: uid('usr'),
       name: profile.name || profile.email || 'Google kullanıcısı',
+      firstName: '',
+      lastName: '',
+      age: 0,
+      birthDate: '',
+      gender: '',
       email: profile.email || '',
       googleId,
       photoUrl: profile.picture || '',
-      instagram: '',
-      instagramId: '',
       bio: 'Yüz yüze tanışmayı seviyorum.',
       interests: [],
       onboarded: false,
       badges: [],
     };
+    assignUsername(db, user);
     db.users.push(user);
     return { user, created: true };
   }
   user.googleId = googleId;
   user.email = profile.email || user.email;
-  if (profile.name) user.name = profile.name;
+  if (profile.name && !user.firstName) user.name = profile.name;
   if (profile.picture) user.photoUrl = profile.picture;
+  assignUsername(db, user);
   return { user, created: false };
+}
+
+async function googleProfileFromIdToken(idToken) {
+  const meRes = await fetch(
+    `https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`,
+  );
+  const profile = await meRes.json();
+  if (!meRes.ok || !profile.sub) {
+    throw new Error('Google profili okunamadı.');
+  }
+  const aud = String(profile.aud || '');
+  const allowed = [
+    process.env.GOOGLE_CLIENT_ID,
+    process.env.GOOGLE_WEB_CLIENT_ID,
+  ]
+    .map((value) => String(value || '').trim())
+    .filter(Boolean);
+  if (!allowed.length || !allowed.includes(aud)) {
+    throw new Error('Google istemcisi eşleşmedi.');
+  }
+  return profile;
+}
+
+async function exchangeGoogleCode(code, redirectUri, codeVerifier) {
+  const body = {
+    code,
+    client_id: process.env.GOOGLE_CLIENT_ID,
+    client_secret: process.env.GOOGLE_CLIENT_SECRET,
+    redirect_uri: redirectUri,
+    grant_type: 'authorization_code',
+  };
+  if (codeVerifier) body.code_verifier = codeVerifier;
+  const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams(body),
+  });
+  const tokenJson = await tokenRes.json();
+  if (!tokenRes.ok || !(tokenJson.access_token || tokenJson.id_token)) {
+    throw new Error(tokenJson.error_description || 'Google token alınamadı.');
+  }
+  if (tokenJson.id_token) {
+    try {
+      return await googleProfileFromIdToken(tokenJson.id_token);
+    } catch {
+      /* userinfo */
+    }
+  }
+  if (!tokenJson.access_token) {
+    throw new Error('Google token alınamadı.');
+  }
+  const meRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+    headers: { Authorization: `Bearer ${tokenJson.access_token}` },
+  });
+  const profile = await meRes.json();
+  if (!meRes.ok || !profile.sub) {
+    throw new Error('Google profili okunamadı.');
+  }
+  return profile;
 }
 
 function attachInstagram(db, user, ig) {
@@ -421,60 +591,60 @@ function attachInstagram(db, user, ig) {
 }
 
 function mountOAuth(app, { db, save, uid }) {
-  app.get('/auth/providers', (_req, res) => {
-    res.json({ google: googleReady(), instagram: igBindReady() });
-  });
-
-  app.post('/auth/instagram/ticket', (req, res) => {
-    const header = req.headers.authorization || '';
-    const token = header.startsWith('Bearer ') ? header.slice(7) : '';
-    const userId = db.tokens[token];
-    if (!userId) {
-      return res.status(401).json({ error: 'Önce Google ile gir.' });
+  async function finishGoogleNative(req, res) {
+    const idToken = String(req.body?.idToken || req.body?.id_token || '').trim();
+    const code = String(req.body?.code || '').trim();
+    const redirectUri = String(req.body?.redirectUri || req.body?.redirect_uri || '').trim();
+    const codeVerifier = String(req.body?.codeVerifier || req.body?.code_verifier || '').trim();
+    if (idToken) {
+      if (!process.env.GOOGLE_CLIENT_ID) {
+        return res.status(400).json({ error: 'Google ayarlı değil.' });
+      }
+    } else if (!googleReady()) {
+      return res.status(400).json({ error: 'Google ayarlı değil.' });
     }
-    pruneIgTickets(db);
-    const ticket = crypto.randomBytes(16).toString('hex');
-    db.igTickets = db.igTickets || {};
-    db.igTickets[ticket] = { userId, at: Date.now() };
-    save(db);
-    res.json({ ticket });
+    try {
+      let profile;
+      if (idToken) {
+        profile = await googleProfileFromIdToken(idToken);
+      } else if (code && redirectUri) {
+        profile = await exchangeGoogleCode(code, redirectUri, codeVerifier);
+      } else {
+        return res.status(400).json({ error: 'Google onayı alınamadı.' });
+      }
+      const { user } = upsertGoogleUser(db, uid, profile);
+      res.json({ token: issueToken(db, save, user.id) });
+    } catch (err) {
+      res.status(400).json({
+        error: err instanceof Error ? err.message : 'Google girişi başarısız.',
+      });
+    }
+  }
+
+  app.get('/auth/providers', (_req, res) => {
+    res.json({
+      google: googleReady(),
+      googleClientId: googleReady() ? String(process.env.GOOGLE_CLIENT_ID || '') : '',
+      instagram: false,
+    });
   });
 
-  app.post(
-    '/auth/instagram/configure',
-    express.urlencoded({ extended: false }),
-    (req, res) => {
-      res.setHeader('Content-Type', 'text/html; charset=utf-8');
-      if (!isLoopback(req)) {
-        return res
-          .status(403)
-          .send(failPage('Anahtarlar yalnızca bu bilgisayardan (localhost) kaydedilir.'));
-      }
-      const fbId = String(req.body?.facebook_app_id || '').trim();
-      const fbSecret = String(req.body?.facebook_app_secret || '').trim();
-      if (!fbId || !fbSecret) {
-        return res.status(400).send(failPage('Facebook App ID ve App Secret gerekli.'));
-      }
-      upsertEnv({
-        FACEBOOK_APP_ID: fbId,
-        FACEBOOK_APP_SECRET: fbSecret,
-        INSTAGRAM_APP_ID: process.env.INSTAGRAM_APP_ID || fbId,
-        INSTAGRAM_APP_SECRET: process.env.INSTAGRAM_APP_SECRET || fbSecret,
-      });
-      const ticket = String(req.body?.ticket || '');
-      const redirect = String(req.body?.redirect || 'http://localhost:8081');
-      res.redirect(
-        `/auth/instagram/start?ticket=${encodeURIComponent(ticket)}&redirect=${encodeURIComponent(redirect)}`,
-      );
-    },
-  );
+  app.post('/auth/instagram/ticket', (_req, res) => {
+    res.status(410).json({ error: 'Instagram bağlantısı kaldırıldı.' });
+  });
+
+  app.post('/auth/instagram/configure', (_req, res) => {
+    res.status(410).json({ error: 'Instagram bağlantısı kaldırıldı.' });
+  });
 
   app.get('/auth/google/start', (req, res) => {
-    const redirect = String(req.query.redirect || 'http://localhost:8081');
-    const cb = callbackUrl(req, '/auth/google/callback');
+    const redirect = String(
+      req.query.redirect || req.query.redirect_uri || 'http://localhost:8081',
+    );
+    const cb = googleRedirectForClient(req);
     if (!googleReady()) {
       res.setHeader('Content-Type', 'text/html; charset=utf-8');
-      return res.send(setupPage('google', cb));
+      return res.send(setupPage('google', callbackUrl(req, '/auth/google/callback')));
     }
     const url = new URL('https://accounts.google.com/o/oauth2/v2/auth');
     url.searchParams.set('client_id', process.env.GOOGLE_CLIENT_ID);
@@ -499,28 +669,7 @@ function mountOAuth(app, { db, save, uid }) {
     }
     try {
       const cb = callbackUrl(req, '/auth/google/callback');
-      const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({
-          code,
-          client_id: process.env.GOOGLE_CLIENT_ID,
-          client_secret: process.env.GOOGLE_CLIENT_SECRET,
-          redirect_uri: cb,
-          grant_type: 'authorization_code',
-        }),
-      });
-      const tokenJson = await tokenRes.json();
-      if (!tokenRes.ok || !tokenJson.access_token) {
-        throw new Error(tokenJson.error_description || 'Google token alınamadı.');
-      }
-      const meRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-        headers: { Authorization: `Bearer ${tokenJson.access_token}` },
-      });
-      const profile = await meRes.json();
-      if (!meRes.ok || !profile.sub) {
-        throw new Error('Google profili okunamadı.');
-      }
+      const profile = await exchangeGoogleCode(code, cb);
       const { user } = upsertGoogleUser(db, uid, profile);
       const token = issueToken(db, save, user.id);
       res.setHeader('Content-Type', 'text/html; charset=utf-8');
@@ -533,99 +682,15 @@ function mountOAuth(app, { db, save, uid }) {
     }
   });
 
-  app.get('/auth/instagram/start', (req, res) => {
-    const redirect = String(req.query.redirect || 'http://localhost:8081');
-    const ticket = String(req.query.ticket || '');
-    const cb = callbackUrl(req, '/auth/instagram/callback');
-    const prefer = String(req.query.via || 'instagram');
-    if (!igBindReady()) {
-      res.setHeader('Content-Type', 'text/html; charset=utf-8');
-      return res.send(setupPage('instagram', cb, { redirect, ticket }));
-    }
-    if (prefer === 'facebook' && metaAppId()) {
-      return res.redirect(facebookLoginUrl(cb, { redirect, ticket }));
-    }
-    if (instagramAppId()) {
-      return res.redirect(instagramLoginUrl(cb, { redirect, ticket }));
-    }
-    return res.redirect(facebookLoginUrl(cb, { redirect, ticket }));
+  app.post('/auth/google', finishGoogleNative);
+  app.post('/auth/google/native', finishGoogleNative);
+
+  app.get('/auth/instagram/start', (_req, res) => {
+    res.status(410).json({ error: 'Instagram bağlantısı kaldırıldı.' });
   });
 
-  app.get('/auth/instagram/callback', async (req, res) => {
-    const state = parseState(req.query.state);
-    const redirect = state.redirect || 'http://localhost:8081';
-    const code = String(req.query.code || '').replace(/#.*$/, '').trim();
-    res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    if (req.query.error) {
-      const denied = String(req.query.error) === 'access_denied';
-      const cb = callbackUrl(req, '/auth/instagram/callback');
-      const igRetry = instagramLoginUrl(cb, { redirect, ticket: state.ticket });
-      if (state.via === 'facebook' && instagramAppId() && !denied) {
-        return res.redirect(igRetry);
-      }
-      return res.status(400).send(
-        failPage(
-          denied
-            ? 'Instagram izni verilmedi.'
-            : String(req.query.error_description || 'Instagram bağlanamadı.'),
-          { retry: igRetry },
-        ),
-      );
-    }
-    if (!code) {
-      return res.status(400).send(failPage('Instagram onayı alınamadı.'));
-    }
-    const viaFacebook = state.via === 'facebook';
-    if (viaFacebook && !facebookReady()) {
-      return res.status(400).send(failPage('Facebook uygulaması ayarlı değil.'));
-    }
-    if (!viaFacebook && !instagramAppId()) {
-      return res.status(400).send(failPage('Instagram onayı alınamadı.'));
-    }
-    try {
-      const cb = callbackUrl(req, '/auth/instagram/callback');
-      let ig;
-      if (viaFacebook) {
-        try {
-          const access = await exchangeFacebookCode(code, cb);
-          ig = await fetchInstagramViaFacebook(access);
-          if (!ig.id || !ig.username) throw new Error('handle yok');
-        } catch {
-          return res.redirect(instagramLoginUrl(cb, { redirect, ticket: state.ticket }));
-        }
-      } else {
-        const { access, igUserId } = await exchangeInstagramCode(code, cb);
-        ig = await fetchInstagramProfile(access, igUserId);
-      }
-      if (!ig.id || !ig.username) {
-        throw new Error(
-          'Kullanıcı adı gelmedi. Instagram’da hesap türünü İçerik üretici yapman yeterli; @adın değişmez.',
-        );
-      }
-
-      pruneIgTickets(db);
-      const ticketUserId = state.ticket ? db.igTickets?.[state.ticket]?.userId : null;
-      if (state.ticket) delete db.igTickets[state.ticket];
-      let user = ticketUserId ? db.users.find((u) => u.id === ticketUserId) : null;
-      if (!user) {
-        user = db.users.find((u) => u.instagramId === ig.id);
-      }
-      if (!user) {
-        throw new Error(
-          'Önce Google ile kaydol / giriş yap, sonra Instagram’ı o hesaba bağla.',
-        );
-      }
-      attachInstagram(db, user, ig);
-      const token = tokenForUser(db, save, user.id);
-      save(db);
-      res.send(finishBindScript(token, redirect));
-    } catch (err) {
-      res
-        .status(400)
-        .send(
-          failPage(err instanceof Error ? err.message : 'Instagram bağlanamadı.'),
-        );
-    }
+  app.get('/auth/instagram/callback', (_req, res) => {
+    res.status(410).json({ error: 'Instagram bağlantısı kaldırıldı.' });
   });
 }
 

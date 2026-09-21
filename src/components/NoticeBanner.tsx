@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { colors, radius } from '../theme';
+import { radius, type ColorTokens } from '../theme';
+import { useThemedStyles } from '../theme/useThemedStyles';
 import type { AppNotice } from '../types';
 
 type Props = {
@@ -10,6 +11,7 @@ type Props = {
 };
 
 export function NoticeBanner({ notice, onOpen, onDismiss }: Props) {
+  const styles = useThemedStyles(createStyles);
   const onDismissRef = useRef(onDismiss);
   onDismissRef.current = onDismiss;
 
@@ -27,7 +29,11 @@ export function NoticeBanner({ notice, onOpen, onDismiss }: Props) {
               ? 'Mesaj'
               : notice.type === 'accepted'
                 ? 'Onay'
-                : 'Selam'}
+                : notice.type === 'filled'
+                  ? 'Kadro'
+                  : notice.type === 'follow_mark'
+                    ? 'Radar'
+                    : 'Selam'}
           </Text>
           <Text style={styles.title}>{notice.title}</Text>
           <Text style={styles.body} numberOfLines={2}>
@@ -42,7 +48,8 @@ export function NoticeBanner({ notice, onOpen, onDismiss }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: ColorTokens) =>
+  StyleSheet.create({
   wrap: {
     position: 'absolute',
     top: 12,
@@ -54,13 +61,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: 10,
-    backgroundColor: colors.ink,
+    backgroundColor: colors.paper,
     borderRadius: radius.md,
     padding: 14,
-    shadowColor: '#1F1A17',
-    shadowOpacity: 0.2,
+    borderWidth: 1,
+    borderColor: colors.line,
+    borderLeftWidth: 4,
+    borderLeftColor: colors.coral,
+    shadowColor: '#000',
+    shadowOpacity: 0.22,
     shadowRadius: 16,
-    elevation: 8,
+    elevation: 10,
   },
   kicker: {
     color: colors.coral,
@@ -70,7 +81,7 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     marginBottom: 4,
   },
-  title: { color: '#fff', fontWeight: '800', fontSize: 15 },
-  body: { color: 'rgba(255,255,255,0.78)', marginTop: 4, lineHeight: 18 },
-  close: { color: 'rgba(255,255,255,0.55)', fontWeight: '700', fontSize: 12 },
+  title: { color: colors.ink, fontWeight: '800', fontSize: 15 },
+  body: { color: colors.muted, marginTop: 4, lineHeight: 18 },
+  close: { color: colors.muted, fontWeight: '700', fontSize: 12 },
 });

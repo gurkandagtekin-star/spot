@@ -1,43 +1,90 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useAndroidBack } from '../hooks/useAndroidBack';
 import { ComposeSheet } from '../components/ComposeSheet';
 import { LiveClock } from '../components/LiveClock';
+import { MapHint } from '../components/MapHint';
 import { NearbyList } from '../components/NearbyList';
 import { PinSheet } from '../components/PinSheet';
-import { SpotMap } from '../components/SpotMap';
 import { RadiusChips } from '../components/RadiusChips';
+import { SpotMap } from '../components/SpotMap';
+import { LocateIcon, PlusIcon } from '../components/TabIcons';
 import { api } from '../api';
+import { loadMapHintSeen, rememberMapHintSeen } from '../map/mapHint';
+import { AdBanner, useAds } from '../ads/AdsContext';
+import { usePro } from '../pro/usePro';
 import { useSpot } from '../store/SpotContext';
-import { colors, radius } from '../theme';
-import type { MapPlace, PinKind } from '../types';
+import { radius, type ColorTokens } from '../theme';
+import { useTheme } from '../theme/ThemeContext';
+import { useThemedStyles } from '../theme/useThemedStyles';
+import type { MapIntent, PinKind } from '../types';
 import {
   distanceMeters,
   filterPinsByRange,
   formatDistance,
   formatMeetAt,
+  pinQuotaLabel,
   type PinRange,
 } from '../utils';
 
 type Props = {
   onOpenChat: (chatId: string) => void;
+  onOpenChats: () => void;
   onOpenPro: () => void;
+  onOpenProfile: (userId: string, pinId: string) => void;
+  intent?: MapIntent | null;
+  onIntentConsumed?: () => void;
 };
 
-export function MapScreen({ onOpenChat, onOpenPro }: Props) {
+export function MapScreen({
+  onOpenChat,
+  onOpenChats,
+  onOpenPro,
+  onOpenProfile,
+  intent,
+  onIntentConsumed,
+}: Props) {
   const spot = useSpot();
+  const pro = usePro();
+  const ads = useAds();
+  const { colors } = useTheme();
+  const styles = useThemedStyles(createStyles);
   const [compose, setCompose] = useState(false);
   const [draft, setDraft] = useState<{ lat: number; lng: number } | null>(null);
   const [placeName, setPlaceName] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
-  const [places, setPlaces] = useState<MapPlace[]>([]);
   const [followToken, setFollowToken] = useState(0);
+  const [lookAt, setLookAt] = useState<{ lat: number; lng: number } | null>(null);
   const [range, setRange] = useState<PinRange>('5');
   const [myArea, setMyArea] = useState('');
   const seenPins = useRef<Set<string>>(new Set());
   const primedNearby = useRef(false);
-  const lastPlaceFetch = useRef({ lat: 0, lng: 0, at: 0 });
   const lastAreaFetch = useRef({ lat: 0, lng: 0 });
+  const ignoreMapClick = useRef(0);
+  const hintLocked = useRef(false);
+  const [showHint, setShowHint] = useState(false);
+
+  useEffect(() => {
+    if (!pro.canUseRange(range)) setRange('15');
+  }, [pro.isPro, range, pro.canUseRange]);
+
+  const dismissHint = useCallback(() => {
+    hintLocked.current = true;
+    setShowHint(false);
+    rememberMapHintSeen();
+  }, []);
+
+  useEffect(() => {
+    let alive = true;
+    void loadMapHintSeen().then((seen) => {
+      if (!alive || seen || hintLocked.current) return;
+      setShowHint(true);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   const flash = (msg: string) => {
     setToast(msg);
@@ -45,8 +92,35 @@ export function MapScreen({ onOpenChat, onOpenPro }: Props) {
   };
 
   useEffect(() => {
+    if (!intent) return;
+    if (intent.type === 'focus') {
+      const pin = spot.live.find((p) => p.id === intent.pinId);
+      if (pin) {
+        setLookAt({ lat: pin.lat, lng: pin.lng });
+        setFollowToken((n) => n + 1);
+        setSelectedId(pin.id);
+        setCompose(false);
+      }
+    } else if (intent.type === 'compose') {
+      if (!pro.isPro && spot.remainingPins <= 0) {
+        if (pro.adMarksLeft > 0) flash('Reklam izleyerek +1 mark açabilirsin.');
+        else onOpenPro();
+      } else {
+        setSelectedId(null);
+        setDraft({ lat: spot.location.lat, lng: spot.location.lng });
+        setCompose(true);
+      }
+    }
+    onIntentConsumed?.();
+  }, [intent]);
+
+  useEffect(() => {
     if (spot.hasGps) setFollowToken((n) => n + 1);
   }, [spot.hasGps]);
+
+  useEffect(() => {
+    if (compose) dismissHint();
+  }, [compose, dismissHint]);
 
   useEffect(() => {
     const prev = lastAreaFetch.current;
@@ -75,6 +149,20 @@ export function MapScreen({ onOpenChat, onOpenPro }: Props) {
       setSelectedId(null);
     }
   }, [visible, selectedId]);
+
+  useAndroidBack(
+    useCallback(() => {
+      if (compose) {
+        setCompose(false);
+        return true;
+      }
+      if (selectedId) {
+        setSelectedId(null);
+        return true;
+      }
+      return false;
+    }, [compose, selectedId]),
+  );
 
   useEffect(() => {
     if (!draft) {
@@ -126,11 +214,21 @@ export function MapScreen({ onOpenChat, onOpenPro }: Props) {
           kind: p.kind,
           mine: p.authorId === spot.meId,
           coming: p.coming ?? 0,
-          meetLabel: formatMeetAt(p.meetAt || p.createdAt),
+          meetLabel: p.kind === 'chat' ? 'Sohbet' : formatMeetAt(p.meetAt || p.createdAt),
           featured: Boolean(p.featured),
-          socialLeader: Boolean(p.socialLeader || author?.socialLeader),
-          authorName: author?.name || '?',
-          photoUrl: author?.photoUrl,
+          socialLeader: Boolean(
+            p.anonymous && p.authorId !== spot.meId
+              ? false
+              : p.socialLeader || author?.socialLeader,
+          ),
+          authorName:
+            p.anonymous && p.authorId !== spot.meId
+              ? 'Anonim'
+              : author?.name || '?',
+          photoUrl:
+            p.anonymous && p.authorId !== spot.meId ? undefined : author?.photoUrl,
+          capacity: p.capacity,
+          quotaLabel: p.capacity ? pinQuotaLabel(p) : undefined,
         };
       }),
     [visible, spot.meId, spot.profiles, spot.profileById],
@@ -156,63 +254,86 @@ export function MapScreen({ onOpenChat, onOpenPro }: Props) {
         })
     : [];
 
+  const helloCount = spot.requests.filter((r) => {
+    const pin = spot.pins.find((p) => p.id === r.pinId);
+    return pin?.authorId === spot.meId && r.status === 'pending';
+  }).length;
+
   return (
     <View style={styles.fill}>
-      <SpotMap
-        center={spot.location}
+      <View
+        style={[
+          styles.mapStage,
+          compose || selected ? { pointerEvents: 'none' } : null,
+        ]}
+        collapsable={false}
+      >
+        <SpotMap
+        center={lookAt || spot.location}
         pins={mapPins}
-        places={places}
+        places={[]}
         draft={draft}
         followToken={followToken}
-        onPinPress={setSelectedId}
+        onPinPress={(id) => setSelectedId(id)}
         onDraftMove={(lat, lng) => setDraft({ lat, lng })}
+        onPlacePress={() => {}}
         onPlace={(lat, lng, name) => {
           setSelectedId(null);
           setDraft({ lat, lng });
           setPlaceName(name);
           setCompose(true);
         }}
-        onView={(lat, lng, zoom) => {
-          if (zoom < 13) return;
-          const prev = lastPlaceFetch.current;
-          const wait = places.length > 0 ? 20000 : 3500;
-          if (
-            distanceMeters(prev, { lat, lng }) < 380 &&
-            Date.now() - prev.at < wait
-          ) {
-            return;
-          }
-          lastPlaceFetch.current = { lat, lng, at: Date.now() };
-          api
-            .lookupPlaces(lat, lng)
-            .then((res) => {
-              if (res.places?.length) setPlaces(res.places);
-            })
-            .catch(() => {});
-        }}
+        onView={() => {}}
         onMapClick={(lat, lng) => {
+          if (Date.now() - ignoreMapClick.current < 500) return;
+          dismissHint();
           setSelectedId(null);
           setDraft({ lat, lng });
           setCompose(true);
         }}
       />
-      <View style={styles.top}>
-        <View style={{ flex: 1, paddingRight: 12 }}>
-          <Text style={styles.hello}>Selam {spot.me.name}</Text>
-          <Text style={styles.brand}>Mark Date</Text>
-          <Text style={styles.sub}>
-            {spot.hasGps ? 'Mekan ikonuna bas veya haritaya dokun' : 'Haritaya dokun, mark koy'}
-          </Text>
-        </View>
-        <LiveClock />
       </View>
-      <RadiusChips value={range} onChange={setRange} />
-      {spot.live.length === 0 && !compose ? (
-        <View style={styles.emptyCard} pointerEvents="none">
-          <Text style={styles.emptyTitle}>Buralarda henüz mark yok</Text>
-          <Text style={styles.emptyText}>
-            İlk buluşmayı sen koy. Kahve, park, bahçe ikonuna bas; mark oraya düşer.
+      <View style={styles.top}>
+        <View style={styles.topRow}>
+          <View style={{ flex: 1, paddingRight: 8 }}>
+            <Text style={styles.hello}>Selam {spot.me.name}</Text>
+            <Text style={styles.brand}>Mark Date</Text>
+          </View>
+          <LiveClock />
+        </View>
+        <RadiusChips
+          value={range}
+          locked={pro.isPro ? [] : ['area', 'all']}
+          onChange={(next) => {
+            if (!pro.canUseRange(next)) {
+              onOpenPro();
+              return;
+            }
+            setRange(next);
+          }}
+        />
+        {!compose && !selected ? <AdBanner /> : null}
+      </View>
+      {helloCount > 0 && !compose && !selected ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Gelen selamlar"
+          style={styles.helloBanner}
+          onPress={onOpenChats}
+        >
+          <Text style={styles.helloBannerText}>
+            {helloCount === 1
+              ? 'Biri selam attı. Eşleşmeye bak.'
+              : `${helloCount} selam bekliyor. Eşleşmeye bak.`}
           </Text>
+        </Pressable>
+      ) : null}
+      {showHint && !compose && !selected ? (
+        <MapHint visible onDismiss={dismissHint} />
+      ) : spot.live.length === 0 && !compose ? (
+        <View style={styles.emptyCard} pointerEvents="none">
+          <Text style={styles.emptyTitle}>Yakınlarında aktif Mark bulunmuyor. İlk işareti sen koy!</Text>
+          <Text style={styles.emptyText}>Haritaya dokun, davetini bırak.</Text>
         </View>
       ) : visible.length === 0 && !compose && !selected ? (
         <View style={styles.emptyCard} pointerEvents="none">
@@ -234,6 +355,7 @@ export function MapScreen({ onOpenChat, onOpenPro }: Props) {
           onOpen={setSelectedId}
         />
       ) : null}
+      {selected || compose ? null : (
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="Konumuma git"
@@ -243,54 +365,89 @@ export function MapScreen({ onOpenChat, onOpenPro }: Props) {
             flash('Konum izni verilirse seni haritada gösteririz.');
             return;
           }
+          setLookAt(null);
           setFollowToken((n) => n + 1);
         }}
       >
-        <Text style={styles.locateText}>Konumum</Text>
+        <LocateIcon color={colors.ink} size={22} />
       </Pressable>
+      )}
       {toast ? (
         <View style={styles.toast}>
           <Text style={styles.toastText}>{toast}</Text>
         </View>
       ) : null}
+      {selected || compose ? null : (
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="Mark koy"
         style={styles.fab}
         onPress={() => {
-          if (!spot.me.isPro && spot.remainingPins <= 0) {
-            onOpenPro();
+          if (!pro.isPro && spot.remainingPins <= 0) {
+            if (pro.adMarksLeft > 0) flash('Reklam izleyerek +1 mark açabilirsin.');
+            else onOpenPro();
             return;
           }
           if (!draft) {
-            flash('Önce haritada buluşma yerini seç.');
-            return;
+            setDraft({ lat: spot.location.lat, lng: spot.location.lng });
           }
           setCompose(true);
         }}
       >
-        <Text style={styles.fabText}>Mark koy</Text>
+        <PlusIcon color="#fff" size={22} />
       </Pressable>
+      )}
       <ComposeSheet
         visible={compose}
         remaining={spot.remainingPins}
-        isPro={Boolean(spot.me.isPro)}
+        isPro={pro.isPro}
+        adMarksLeft={pro.adMarksLeft}
+        onWatchAd={async () => {
+          const ok = await ads.showRewarded();
+          if (!ok) return false;
+          const res = await pro.claimAdMark();
+          if (!res.ok) {
+            flash(res.reason);
+            return false;
+          }
+          flash('+1 mark hakkı.');
+          return true;
+        }}
+        onOpenPro={onOpenPro}
         placeName={placeName}
         onClose={() => setCompose(false)}
-        onSubmit={async (text, kind: PinKind, meetAt: number, featured: boolean) => {
+        onSubmit={async (text, kind: PinKind, meetAt: number, featured: boolean, photoDataUrl?: string, capacity?: 2 | 3 | 4, anonymous?: boolean) => {
           if (!draft) return 'Önce haritada bir yer işaretle.';
-          if (!spot.me.isPro && spot.remainingPins <= 0) {
+          if (kind === 'chat' && !pro.isPro) {
             onOpenPro();
-            return 'Günlük hak doldu.';
+            return 'Sohbet noktası Pro’ya özel.';
+          }
+          if (!pro.isPro && featured) {
+            onOpenPro();
+            return 'Öne çıkarma Pro’ya özel.';
+          }
+          if (!pro.isPro && anonymous) {
+            onOpenPro();
+            return 'Anonim paylaşım Pro’ya özel.';
           }
           const res = await spot.dropPin(text, kind, draft, {
             meetAt,
-            placeName: placeName || undefined,
+            placeName: kind === 'chat' ? undefined : placeName || undefined,
             featured,
+            photoDataUrl,
+            capacity,
+            anonymous,
           });
           if (!res.ok) return res.reason;
           setDraft(null);
-          flash('Mark haritada. Saatinden 2 saat sonra silinecek.');
+          flash(
+            kind === 'chat'
+              ? 'Sohbet noktası haritada.'
+              : pro.isPro
+                ? 'Mark haritada. 16 saat sonra silinir.'
+                : 'Mark haritada. 2 saat sonra silinir.',
+          );
+          void ads.showInterstitial();
           return null;
         }}
       />
@@ -323,8 +480,17 @@ export function MapScreen({ onOpenChat, onOpenPro }: Props) {
           flash('İstek gönderildi. Onaylarsa sohbet açılır.');
           return null;
         }}
+        onWithdraw={async () => {
+          if (!myRequest) return;
+          const res = await spot.withdrawRequest(myRequest.id);
+          flash(res.ok ? 'İstek geri çekildi.' : res.reason);
+        }}
         onDecide={async (id, accept) => {
-          const chatId = await spot.decideRequest(id, accept);
+          const { chatId, filled } = await spot.decideRequest(id, accept);
+          if (filled) {
+            setSelectedId(null);
+            flash('Kadro tamam. Mark haritadan kalktı, sohbet sizde.');
+          }
           if (chatId) {
             setSelectedId(null);
             onOpenChat(chatId);
@@ -347,51 +513,84 @@ export function MapScreen({ onOpenChat, onOpenPro }: Props) {
           const res = await spot.reportUser(selected.authorId, reason, selected.id);
           flash(res.ok ? 'Şikayet alındı. Ekip bakacak.' : res.reason);
         }}
+        onOpenProfile={(userId) => {
+          if (!selected) return;
+          onOpenProfile(userId, selected.id);
+        }}
       />
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  fill: { flex: 1, backgroundColor: 'transparent', position: 'relative' },
+const createStyles = (colors: ColorTokens) =>
+  StyleSheet.create({
+  fill: { flex: 1, backgroundColor: '#D5DDD4', position: 'relative' },
+  mapStage: {
+    flex: 1,
+    width: '100%',
+    height: '100%',
+    backgroundColor: '#D5DDD4',
+  },
   top: {
     position: 'absolute',
-    top: 16,
-    left: 16,
-    right: 16,
+    top: 12,
+    left: 12,
+    right: 12,
     backgroundColor: colors.paper,
-    borderRadius: 22,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingTop: 8,
+    paddingBottom: 10,
     borderWidth: 1,
     borderColor: colors.line,
     shadowColor: colors.ink,
     shadowOpacity: 0.08,
     shadowRadius: 16,
     elevation: 3,
+    gap: 10,
+  },
+  topRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  hello: { color: colors.muted, fontWeight: '600', fontSize: 12 },
-  brand: { fontSize: 20, fontWeight: '900', color: colors.ink, marginTop: 1 },
-  sub: { color: colors.muted, fontWeight: '700', fontSize: 12, marginTop: 3 },
+  hello: { color: colors.muted, fontWeight: '600', fontSize: 11 },
+  brand: { fontSize: 16, fontWeight: '800', color: colors.ink, marginTop: 0 },
   locate: {
     position: 'absolute',
-    top: 108,
+    bottom: 16,
     right: 16,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     backgroundColor: colors.paper,
     borderWidth: 1,
     borderColor: colors.line,
-    borderRadius: radius.pill,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
     shadowColor: colors.ink,
-    shadowOpacity: 0.08,
+    shadowOpacity: 0.12,
     shadowRadius: 10,
-    elevation: 2,
+    elevation: 5,
+    zIndex: 12,
   },
-  locateText: { color: colors.teal, fontWeight: '800', fontSize: 12 },
+  helloBanner: {
+    position: 'absolute',
+    top: 128,
+    left: 16,
+    right: 16,
+    backgroundColor: colors.coral,
+    borderRadius: radius.pill,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    zIndex: 8,
+  },
+  helloBannerText: {
+    color: '#fff',
+    fontWeight: '800',
+    fontSize: 13,
+    textAlign: 'center',
+  },
   emptyCard: {
     position: 'absolute',
     left: 24,
@@ -407,21 +606,24 @@ const styles = StyleSheet.create({
   emptyText: { color: colors.muted, marginTop: 6, lineHeight: 20 },
   fab: {
     position: 'absolute',
-    bottom: 24,
-    alignSelf: 'center',
+    bottom: 16,
+    left: '50%',
+    marginLeft: -26,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
     backgroundColor: colors.coral,
-    paddingHorizontal: 22,
-    paddingVertical: 14,
-    borderRadius: radius.pill,
     shadowColor: colors.coral,
-    shadowOpacity: 0.35,
+    shadowOpacity: 0.4,
     shadowRadius: 12,
     elevation: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 11,
   },
-  fabText: { color: '#fff', fontWeight: '800', fontSize: 16 },
   toast: {
     position: 'absolute',
-    top: 158,
+    top: 124,
     left: 24,
     right: 24,
     backgroundColor: colors.ink,

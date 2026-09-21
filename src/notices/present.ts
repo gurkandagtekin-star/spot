@@ -46,6 +46,7 @@ export async function prepareNotices() {
         importance: Notifications.AndroidImportance.HIGH,
         vibrationPattern: [0, 180, 80, 180],
         lightColor: '#E35D4A',
+        color: '#1E1B2C',
       });
     }
     await Notifications.requestPermissionsAsync();
@@ -121,17 +122,19 @@ export function listenNotificationOpen(
         pinId: typeof data.pinId === 'string' && data.pinId ? data.pinId : undefined,
       });
     });
-    if (!consumedLaunch) {
-      void Notifications.getLastNotificationResponseAsync().then((last) => {
-        if (consumedLaunch || !last) return;
-        consumedLaunch = true;
-        const data = last.notification.request.content.data;
-        if (!data) return;
-        onOpen({
-          chatId: typeof data.chatId === 'string' && data.chatId ? data.chatId : undefined,
-          pinId: typeof data.pinId === 'string' && data.pinId ? data.pinId : undefined,
-        });
-      });
+    if (!consumedLaunch && typeof Notifications.getLastNotificationResponseAsync === 'function') {
+      void Notifications.getLastNotificationResponseAsync()
+        .then((last) => {
+          if (consumedLaunch || !last) return;
+          consumedLaunch = true;
+          const data = last.notification.request.content.data;
+          if (!data) return;
+          onOpen({
+            chatId: typeof data.chatId === 'string' && data.chatId ? data.chatId : undefined,
+            pinId: typeof data.pinId === 'string' && data.pinId ? data.pinId : undefined,
+          });
+        })
+        .catch(() => {});
     }
     remove = () => sub.remove();
   });

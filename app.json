@@ -52,7 +52,6 @@
       "expo-dev-client",
       "@react-native-google-signin/google-signin",
       "expo-video",
-      "react-native-purchases",
       [
         "expo-navigation-bar",
         {

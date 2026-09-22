@@ -421,7 +421,7 @@ export function MapScreen({
                 return true;
               }
             : undefined
-        }}
+        }
         onOpenPro={onOpenPro}
         placeName={placeName}
         onClose={() => setCompose(false)}

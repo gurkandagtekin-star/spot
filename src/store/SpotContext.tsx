@@ -13,6 +13,7 @@ import { Platform } from 'react-native';
 import * as Linking from 'expo-linking';
 import { io, type Socket } from 'socket.io-client';
 import { api, getApiUrl, getToken, hydrateToken, mediaUrl, setToken, type Snapshot, ApiError } from '../api';
+import { failCatch, localError } from '../i18n/errors';
 import { parseSpotToken } from '../auth/parseToken';
 import { DEFAULT_MAP } from '../data/seed';
 import { prepareNotices, presentSystemNotice, registerExpoPush, lastPushToken } from '../notices/present';
@@ -684,7 +685,7 @@ export function SpotProvider({ children }: { children: ReactNode }) {
       } catch (err) {
         return {
           ok: false,
-          reason: err instanceof Error ? err.message : 'Giriş tamamlanamadı.',
+          reason: failCatch(err, 'Giriş tamamlanamadı.'),
         };
       }
     };
@@ -711,20 +712,20 @@ export function SpotProvider({ children }: { children: ReactNode }) {
       } catch (err) {
         return {
           ok: false,
-          reason: err instanceof Error ? err.message : 'Hesap silinemedi.',
+          reason: failCatch(err, 'Hesap silinemedi.'),
         };
       }
     };
 
     const dropPin: SpotContextValue['dropPin'] = async (text, kind, at, extra) => {
       if (kind === 'chat' && !me.isPro) {
-        return { ok: false, reason: 'Sohbet noktası Pro’ya özel.' };
+        return { ok: false, reason: localError('Sohbet noktası Pro’ya özel.') };
       }
       if (!me.isPro && extra.featured) {
-        return { ok: false, reason: 'Öne çıkarma Pro’ya özel.' };
+        return { ok: false, reason: localError('Öne çıkarma Pro’ya özel.') };
       }
       if (!me.isPro && extra.anonymous) {
-        return { ok: false, reason: 'Anonim paylaşım Pro’ya özel.' };
+        return { ok: false, reason: localError('Anonim paylaşım Pro’ya özel.') };
       }
       try {
         const snap = await api.dropPin({
@@ -778,7 +779,7 @@ export function SpotProvider({ children }: { children: ReactNode }) {
       } catch (err) {
         return {
           ok: false,
-          reason: err instanceof Error ? err.message : 'Mark koyulamadı.',
+          reason: failCatch(err, 'Mark koyulamadı.'),
         };
       }
     };
@@ -790,7 +791,7 @@ export function SpotProvider({ children }: { children: ReactNode }) {
       } catch (err) {
         return {
           ok: false,
-          reason: err instanceof Error ? err.message : 'İstek gönderilemedi.',
+          reason: failCatch(err, 'İstek gönderilemedi.'),
         };
       }
     };
@@ -810,7 +811,7 @@ export function SpotProvider({ children }: { children: ReactNode }) {
         }
         return {
           ok: false,
-          reason: err instanceof Error ? err.message : 'İstek geri çekilemedi.',
+          reason: failCatch(err, 'İstek geri çekilemedi.'),
         };
       }
     };
@@ -830,7 +831,7 @@ export function SpotProvider({ children }: { children: ReactNode }) {
         }
         return {
           ok: false,
-          reason: err instanceof Error ? err.message : 'Sohbet silinemedi.',
+          reason: failCatch(err, 'Sohbet silinemedi.'),
         };
       }
     };
@@ -856,7 +857,7 @@ export function SpotProvider({ children }: { children: ReactNode }) {
       const trimmed = text.trim();
       const dataUrl = String(extra?.dataUrl || '').trim();
       if (!trimmed && !dataUrl) {
-        return { ok: false as const, reason: 'Boş mesaj.' };
+        return { ok: false as const, reason: localError('Boş mesaj.') };
       }
       try {
         hydrate(
@@ -870,7 +871,7 @@ export function SpotProvider({ children }: { children: ReactNode }) {
       } catch (err) {
         return {
           ok: false as const,
-          reason: err instanceof Error ? err.message : 'Mesaj gönderilemedi.',
+          reason: failCatch(err, 'Mesaj gönderilemedi.'),
         };
       }
     };
@@ -946,7 +947,7 @@ export function SpotProvider({ children }: { children: ReactNode }) {
       } catch (err) {
         return {
           ok: false,
-          reason: err instanceof Error ? err.message : 'Satın alma tamamlanamadı.',
+          reason: failCatch(err, 'Satın alma tamamlanamadı.'),
         };
       }
     };
@@ -986,7 +987,7 @@ export function SpotProvider({ children }: { children: ReactNode }) {
       } catch (err) {
         return {
           ok: false,
-          reason: err instanceof Error ? err.message : 'Fotoğraf yüklenemedi.',
+          reason: failCatch(err, 'Fotoğraf yüklenemedi.'),
         };
       }
     };
@@ -1016,7 +1017,7 @@ export function SpotProvider({ children }: { children: ReactNode }) {
       } catch (err) {
         return {
           ok: false,
-          reason: err instanceof Error ? err.message : 'Devam edilemedi.',
+          reason: failCatch(err, 'Devam edilemedi.'),
         };
       }
     };
@@ -1028,14 +1029,14 @@ export function SpotProvider({ children }: { children: ReactNode }) {
       } catch (err) {
         return {
           ok: false,
-          reason: err instanceof Error ? err.message : 'Mark kapatılamadı.',
+          reason: failCatch(err, 'Mark kapatılamadı.'),
         };
       }
     };
 
     const blockUser: SpotContextValue['blockUser'] = async (userId) => {
       if (!userId || userId === state.me.id) {
-        return { ok: false, reason: 'Engellenemedi.' };
+        return { ok: false, reason: localError('Engellenemedi.') };
       }
       const person =
         state.profiles.find((p) => p.id === userId) || extraProfiles[userId];
@@ -1068,7 +1069,7 @@ export function SpotProvider({ children }: { children: ReactNode }) {
         }
         return {
           ok: false,
-          reason: err instanceof Error ? err.message : 'Engellenemedi.',
+          reason: failCatch(err, 'Engellenemedi.'),
         };
       }
     };
@@ -1080,14 +1081,14 @@ export function SpotProvider({ children }: { children: ReactNode }) {
       } catch (err) {
         return {
           ok: false,
-          reason: err instanceof Error ? err.message : 'Engel kaldırılamadı.',
+          reason: failCatch(err, 'Engel kaldırılamadı.'),
         };
       }
     };
 
     const followUser: SpotContextValue['followUser'] = async (userId) => {
       if (!userId || userId === state.me.id) {
-        return { ok: false, reason: 'Kendini takip edemezsin.' };
+        return { ok: false, reason: localError('Kendini takip edemezsin.') };
       }
       const already = Boolean(state.me.followingIds?.includes(userId));
       const paint = (on: boolean) => {
@@ -1147,7 +1148,7 @@ export function SpotProvider({ children }: { children: ReactNode }) {
         if (!already) paint(false);
         return {
           ok: false,
-          reason: err instanceof Error ? err.message : 'Takip edilemedi.',
+          reason: failCatch(err, 'Takip edilemedi.'),
         };
       }
     };
@@ -1202,14 +1203,14 @@ export function SpotProvider({ children }: { children: ReactNode }) {
         if (had) rememberFollow(state.me.id, userId);
         return {
           ok: false,
-          reason: err instanceof Error ? err.message : 'Takipten çıkılamadı.',
+          reason: failCatch(err, 'Takipten çıkılamadı.'),
         };
       }
     };
 
     const startHello: SpotContextValue['startHello'] = async (userId) => {
       if (!userId || userId === state.me.id) {
-        return { ok: false, reason: 'Kendine selam atamazsın.' };
+        return { ok: false, reason: localError('Kendine selam atamazsın.') };
       }
       const open = state.chats.find(
         (c) =>
@@ -1224,17 +1225,17 @@ export function SpotProvider({ children }: { children: ReactNode }) {
       } catch (err) {
         return {
           ok: false,
-          reason: err instanceof Error ? err.message : 'Selam gönderilemedi.',
+          reason: failCatch(err, 'Selam gönderilemedi.'),
         };
       }
     };
 
     const postWallNote: SpotContextValue['postWallNote'] = async (userId, text) => {
       const trimmed = String(text || '').trim().slice(0, 280);
-      if (!userId) return { ok: false, reason: 'Profil yok.' };
-      if (trimmed.length < 2) return { ok: false, reason: 'Bir cümle yaz.' };
+      if (!userId) return { ok: false, reason: localError('Profil yok.') };
+      if (trimmed.length < 2) return { ok: false, reason: localError('Bir cümle yaz.') };
       if (userId !== state.me.id) {
-        return { ok: false, reason: 'Duvara yalnızca sahibi yazabilir.' };
+        return { ok: false, reason: localError('Duvara yalnızca sahibi yazabilir.') };
       }
       try {
         const snap = await api.postWallNote(userId, trimmed, state.me.id);
@@ -1258,7 +1259,7 @@ export function SpotProvider({ children }: { children: ReactNode }) {
       } catch (err) {
         return {
           ok: false,
-          reason: err instanceof Error ? err.message : 'Not paylaşılamadı.',
+          reason: failCatch(err, 'Not paylaşılamadı.'),
         };
       }
     };
@@ -1339,7 +1340,7 @@ export function SpotProvider({ children }: { children: ReactNode }) {
       } catch (err) {
         return {
           ok: false,
-          reason: err instanceof Error ? err.message : 'Şikayet gönderilemedi.',
+          reason: failCatch(err, 'Şikayet gönderilemedi.'),
         };
       }
     };
@@ -1360,7 +1361,7 @@ export function SpotProvider({ children }: { children: ReactNode }) {
       } catch (err) {
         return {
           ok: false,
-          reason: err instanceof Error ? err.message : 'Çark çevrilemedi.',
+          reason: failCatch(err, 'Çark çevrilemedi.'),
         };
       }
     };
@@ -1372,7 +1373,7 @@ export function SpotProvider({ children }: { children: ReactNode }) {
       } catch (err) {
         return {
           ok: false,
-          reason: err instanceof Error ? err.message : 'Kaydedilemedi.',
+          reason: failCatch(err, 'Kaydedilemedi.'),
         };
       }
     };
@@ -1385,14 +1386,14 @@ export function SpotProvider({ children }: { children: ReactNode }) {
       } catch (err) {
         return {
           ok: false,
-          reason: err instanceof Error ? err.message : 'Link oluşturulamadı.',
+          reason: failCatch(err, 'Link oluşturulamadı.'),
         };
       }
     };
 
     const claimAdMark: SpotContextValue['claimAdMark'] = async () => {
       if (me.isPro) {
-        return { ok: false, reason: 'Pro’da reklam hakkı yok.' };
+        return { ok: false, reason: localError('Pro’da reklam hakkı yok.') };
       }
       try {
         hydrate(await api.claimAdMark());
@@ -1400,7 +1401,7 @@ export function SpotProvider({ children }: { children: ReactNode }) {
       } catch (err) {
         return {
           ok: false,
-          reason: err instanceof Error ? err.message : 'Hak eklenemedi.',
+          reason: failCatch(err, 'Hak eklenemedi.'),
         };
       }
     };

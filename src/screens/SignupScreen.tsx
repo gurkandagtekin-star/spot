@@ -1,16 +1,17 @@
 import { useRef, useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useTranslation } from 'react-i18next';
 import { googleClientId, startGoogleSignIn } from '../auth/startOAuth';
 import { GoogleMark } from '../components/GoogleMark';
 import { SignupBackground } from '../components/SignupBackground';
-import { PRIVACY_BODY, PRIVACY_TITLE, TERMS_BODY, TERMS_TITLE } from '../legal/copy';
 import { useSpot } from '../store/SpotContext';
 import { radius } from '../theme';
 
 const WEB_CLIENT_ID = googleClientId();
 
 export function SignupScreen() {
+  const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const spot = useSpot();
   const [error, setError] = useState<string | null>(null);
@@ -24,15 +25,15 @@ export function SignupScreen() {
 
   const onGoogle = async () => {
     if (!ageOk) {
-      setError('Devam etmek için 18 yaşından büyük olduğunu onayla.');
+      setError(t('signup.ageNeed'));
       return;
     }
     if (!legalOk) {
-      setError('Devam etmek için şartları ve gizlilik metnini kabul et.');
+      setError(t('signup.legalNeed'));
       return;
     }
     if (!googleReady) {
-      setError('Google hazır değil. Biraz bekle.');
+      setError(t('signup.googleWait'));
       return;
     }
     if (finishing.current) return;
@@ -43,7 +44,7 @@ export function SignupScreen() {
       const result = await startGoogleSignIn();
       if (!result) return;
       if ('cancelled' in result) {
-        setError('Google kapandı. Tekrar dene.');
+        setError(t('signup.googleClosed'));
         return;
       }
       if ('error' in result) {
@@ -53,7 +54,7 @@ export function SignupScreen() {
       const signed = await spot.signInWithToken(result.token);
       if (!signed.ok) setError(signed.reason);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Google girişi başarısız.');
+      setError(err instanceof Error ? err.message : t('signup.googleFail'));
     } finally {
       finishing.current = false;
       setBusy(false);
@@ -76,17 +77,15 @@ export function SignupScreen() {
       >
         <View style={styles.hero}>
           <Text style={styles.logo}>Mark Date</Text>
-          <Text style={styles.slogan}>Anı yakala, yüz yüze tanış.</Text>
-          <Text style={styles.lead}>
-            Haritada bir işaret bırak. İki taraf onaylarsa sohbet anında açılır.
-          </Text>
+          <Text style={styles.slogan}>{t('signup.slogan')}</Text>
+          <Text style={styles.lead}>{t('signup.lead')}</Text>
         </View>
 
         <View style={styles.actions}>
           {error ? <Text style={styles.error}>{error}</Text> : null}
           {!WEB_CLIENT_ID ? (
             <Text style={styles.warn}>
-              Google’a ulaşılamadı. İnternetini kontrol et.
+              {t('signup.googleOffline')}
             </Text>
           ) : null}
           <Pressable
@@ -98,7 +97,7 @@ export function SignupScreen() {
             <View style={[styles.box, ageOk && styles.boxOn]}>
               {ageOk ? <Text style={styles.check}>✓</Text> : null}
             </View>
-            <Text style={styles.ageText}>18 yaşından büyüğüm.</Text>
+            <Text style={styles.ageText}>{t('signup.ageCheck')}</Text>
           </Pressable>
           <Pressable
             accessibilityRole="checkbox"
@@ -110,21 +109,21 @@ export function SignupScreen() {
               {legalOk ? <Text style={styles.check}>✓</Text> : null}
             </View>
             <Text style={styles.legalText}>
-              Kullanım Şartları ve Gizlilik Politikası’nı kabul ediyorum.
+              {t('signup.legalCheck')}
             </Text>
           </Pressable>
           <View style={styles.linkRow}>
             <Pressable onPress={() => setLegal('terms')}>
-              <Text style={styles.link}>Kullanım Şartları</Text>
+              <Text style={styles.link}>{t('signup.terms')}</Text>
             </Pressable>
             <Text style={styles.linkDot}>·</Text>
             <Pressable onPress={() => setLegal('privacy')}>
-              <Text style={styles.link}>Gizlilik Politikası</Text>
+              <Text style={styles.link}>{t('signup.privacy')}</Text>
             </Pressable>
           </View>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Google ile Giriş Yap"
+            accessibilityLabel={t('signup.googleCta')}
             style={[styles.google, !canGo && styles.googleOff]}
             onPress={() => {
               void onGoogle();
@@ -132,11 +131,11 @@ export function SignupScreen() {
           >
             <GoogleMark />
             <Text style={styles.googleText}>
-              {busy ? 'Bağlanıyor…' : 'Google ile Giriş Yap'}
+              {busy ? t('signup.connecting') : t('signup.googleCta')}
             </Text>
           </Pressable>
           <Text style={styles.fine}>
-            İşaretler 2 saatte kaybolur. Gizlilik ve onay esastır.
+            {t('signup.fine')}
           </Text>
         </View>
       </View>
@@ -145,15 +144,15 @@ export function SignupScreen() {
         <View style={styles.legalFrame}>
           <View style={[styles.legalCard, { paddingBottom: Math.max(insets.bottom, 20) }]}>
             <Text style={styles.legalTitle}>
-              {legal === 'privacy' ? PRIVACY_TITLE : TERMS_TITLE}
+              {legal === 'privacy' ? t('signup.privacy') : t('signup.terms')}
             </Text>
             <ScrollView style={styles.legalScroll}>
               <Text style={styles.legalBody}>
-                {legal === 'privacy' ? PRIVACY_BODY : TERMS_BODY}
+                {legal === 'privacy' ? t('signup.privacyBody') : t('signup.termsBody')}
               </Text>
             </ScrollView>
             <Pressable style={styles.legalClose} onPress={() => setLegal(null)}>
-              <Text style={styles.legalCloseTxt}>Kapat</Text>
+              <Text style={styles.legalCloseTxt}>{t('common.close')}</Text>
             </Pressable>
           </View>
         </View>

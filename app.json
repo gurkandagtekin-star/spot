@@ -7,23 +7,23 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./assets/icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#16081F"
+      "backgroundColor": "#0b101d"
     },
     "scheme": "markdate",
     "plugins": [
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "Mark Date, yakındaki buluşmaları göstermek için konumunu kullanır."
+          "locationWhenInUsePermission": "Mark Date uses your location to show nearby meetups."
         }
       ],
       [
         "expo-image-picker",
         {
-          "photosPermission": "Mark Date profil ve sohbet fotoğrafı için galeriye erişir.",
-          "cameraPermission": "Mark Date sohbete fotoğraf eklemek için kamerayı kullanır."
+          "photosPermission": "Mark Date accesses your library for profile and chat photos.",
+          "cameraPermission": "Mark Date uses the camera to add photos to chat."
         }
       ],
       [
@@ -36,10 +36,19 @@
       [
         "expo-secure-store",
         {
-          "faceIDPermission": "Mark Date, giriş anahtarını cihazda güvenle tutmak için Face ID kullanabilir."
+          "faceIDPermission": "Mark Date can use Face ID to keep your sign-in key on this device."
         }
       ],
       "expo-web-browser",
+      [
+        "expo-localization",
+        {
+          "supportedLocales": {
+            "ios": ["en", "tr"],
+            "android": ["en", "tr"]
+          }
+        }
+      ],
       "expo-dev-client",
       "@react-native-google-signin/google-signin",
       "expo-video"
@@ -51,7 +60,8 @@
         "usesNonExemptEncryption": false
       },
       "infoPlist": {
-        "NSLocationWhenInUseUsageDescription": "Mark Date, yakındaki buluşmaları göstermek için konumunu kullanır."
+        "CFBundleAllowMixedLocalizations": true,
+        "NSLocationWhenInUseUsageDescription": "Mark Date uses your location to show nearby meetups."
       }
     },
     "android": {
@@ -101,15 +111,18 @@
         "android.permission.RECORD_AUDIO"
       ],
       "adaptiveIcon": {
-        "backgroundColor": "#0A0A0A",
-        "foregroundImage": "./assets/android-icon-foreground.png",
-        "backgroundImage": "./assets/android-icon-background.png",
+        "backgroundColor": "#0b101d",
+        "foregroundImage": "./assets/icon.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false
     },
     "web": {
       "favicon": "./assets/favicon.png"
+    },
+    "locales": {
+      "en": "./languages/en.json",
+      "tr": "./languages/tr.json"
     },
     "extra": {
       "eas": {

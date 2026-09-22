@@ -11,6 +11,7 @@ const { pickWheel, distanceMeters } = require('./play');
 const { createPersist, emptyDb } = require('./persist');
 const { expoTokens, sendExpoPush, rememberToken, forgetToken } = require('./push');
 const { mountAdmin, adminOk } = require('./admin');
+const { fail, tError } = require('./i18n');
 const {
   normalizeUsername,
   usernameTaken,
@@ -820,8 +821,8 @@ function tooMany(req, action, max, windowMs) {
 }
 tooMany.buckets = new Map();
 
-function rateLimited(res, msg) {
-  return res.status(429).json({ error: msg || 'Biraz yavaş. Az sonra tekrar dene.' });
+function rateLimited(req, res, msg) {
+  return res.status(429).json(fail(req, msg || 'Biraz yavaş. Az sonra tekrar dene.'));
 }
 
 function purgeUser(db, userId) {
@@ -864,7 +865,7 @@ function auth(req, res, next) {
   const header = req.headers.authorization || '';
   const token = header.startsWith('Bearer ') ? header.slice(7) : '';
   const userId = db.tokens[token];
-  if (!userId) return res.status(401).json({ error: 'Giriş yapman gerekiyor.' });
+  if (!userId) return res.status(401).json(fail(req, 'Giriş yapman gerekiyor.'));
   req.userId = userId;
   req.token = token;
   next();
@@ -880,9 +881,9 @@ function maybeAuth(req, _res, next) {
 function sendWallPosts(req, res) {
   const wallId = String(req.params.id || req.params.userId || '');
   const owner = userById(db, wallId);
-  if (!owner) return res.status(404).json({ error: 'Profil yok.' });
+  if (!owner) return res.status(404).json(fail(req, 'Profil yok.'));
   if (req.userId && blockedPair(db, req.userId, wallId)) {
-    return res.status(400).json({ error: 'Bu duvar görünmüyor.' });
+    return res.status(400).json(fail(req, 'Bu duvar görünmüyor.'));
   }
   res.json({ posts: wallPostsFor(db, owner, req.userId) });
 }
@@ -910,9 +911,9 @@ app.post('/auth/logout', auth, (req, res) => {
 
 app.post('/me/push-token', auth, (req, res) => {
   const user = userById(db, req.userId);
-  if (!user) return res.status(404).json({ error: 'Profil yok.' });
+  if (!user) return res.status(404).json(fail(req, 'Profil yok.'));
   if (!rememberToken(user, req.body?.token)) {
-    return res.status(400).json({ error: 'Geçerli bir Expo push token değil.' });
+    return res.status(400).json(fail(req, 'Geçerli bir Expo push token değil.'));
   }
   save(db);
   res.json({ ok: true });
@@ -920,7 +921,7 @@ app.post('/me/push-token', auth, (req, res) => {
 
 app.delete('/me/push-token', auth, (req, res) => {
   const user = userById(db, req.userId);
-  if (!user) return res.status(404).json({ error: 'Profil yok.' });
+  if (!user) return res.status(404).json(fail(req, 'Profil yok.'));
   forgetToken(user, req.body?.token);
   save(db);
   res.json({ ok: true });
@@ -932,7 +933,7 @@ app.get('/snapshot', auth, (req, res) => {
 
 app.patch('/me', auth, (req, res) => {
   const user = userById(db, req.userId);
-  if (!user) return res.status(404).json({ error: 'Profil yok.' });
+  if (!user) return res.status(404).json(fail(req, 'Profil yok.'));
   if (typeof req.body.firstName === 'string') {
     user.firstName = req.body.firstName.trim().slice(0, 40);
   }
@@ -948,25 +949,25 @@ app.patch('/me', auth, (req, res) => {
   if (req.body.birthDate != null && req.body.birthDate !== '') {
     const iso = parseBirthDate(req.body.birthDate);
     if (!iso) {
-      return res.status(400).json({ error: 'Geçerli bir doğum tarihi yaz.' });
+      return res.status(400).json(fail(req, 'Geçerli bir doğum tarihi yaz.'));
     }
     const years = ageFromBirthDate(iso);
     if (years == null || years < 18 || years > 99) {
-      return res.status(400).json({ error: 'Devam etmek için 18 yaşından büyük olmalısın.' });
+      return res.status(400).json(fail(req, 'Devam etmek için 18 yaşından büyük olmalısın.'));
     }
     user.birthDate = iso;
     user.age = years;
   } else if (!user.birthDate && req.body.age != null && req.body.age !== '') {
     const age = parseInt(String(req.body.age), 10);
     if (!Number.isInteger(age) || age < 18 || age > 99) {
-      return res.status(400).json({ error: 'Yaş 18–99 arasında olmalı.' });
+      return res.status(400).json(fail(req, 'Yaş 18–99 arasında olmalı.'));
     }
     user.age = age;
   }
   if (typeof req.body.gender === 'string' && req.body.gender) {
     const g = req.body.gender;
     if (!['woman', 'man', 'other', 'unspecified'].includes(g)) {
-      return res.status(400).json({ error: 'Cinsiyet geçersiz.' });
+      return res.status(400).json(fail(req, 'Cinsiyet geçersiz.'));
     }
     user.gender = g;
   }
@@ -974,12 +975,12 @@ app.patch('/me', auth, (req, res) => {
   if (Object.prototype.hasOwnProperty.call(req.body, 'username')) {
     const handle = normalizeUsername(req.body.username);
     if (!handle) {
-      return res.status(400).json({
-        error: 'Kullanıcı adı 2–30 karakter, harf, rakam, nokta veya alt çizgi.',
-      });
+      return res.status(400).json(
+        fail(req, 'Kullanıcı adı 2–30 karakter, harf, rakam, nokta veya alt çizgi.'),
+      );
     }
     if (usernameTaken(db, handle, user.id)) {
-      return res.status(400).json({ error: 'Username zaten alınmış' });
+      return res.status(400).json(fail(req, 'Username zaten alınmış'));
     }
     user.username = handle;
   }
@@ -1017,7 +1018,7 @@ app.delete('/me', auth, (req, res) => {
 });
 
 app.delete('/me/instagram', auth, (_req, res) => {
-  res.status(410).json({ error: 'Instagram bağlantısı kaldırıldı.' });
+  res.status(410).json(fail(req, 'Instagram bağlantısı kaldırıldı.'));
 });
 
 function searchDirectory(req, res) {
@@ -1072,12 +1073,12 @@ function appendProfilePhoto(user, dataUrl) {
 
 app.post('/me/photo', auth, (req, res) => {
   const user = userById(db, req.userId);
-  if (!user) return res.status(404).json({ error: 'Profil yok.' });
+  if (!user) return res.status(404).json(fail(req, 'Profil yok.'));
   if (tooMany(req, 'photo', 12, 60 * 60 * 1000)) {
-    return rateLimited(res, 'Fotoğraf limiti doldu. Biraz sonra dene.');
+    return rateLimited(req, res, 'Fotoğraf limiti doldu. Biraz sonra dene.');
   }
   const saved = appendProfilePhoto(user, req.body?.dataUrl);
-  if (saved.error) return res.status(400).json({ error: saved.error });
+  if (saved.error) return res.status(400).json(fail(req, saved.error));
   save(db);
   emitSnapshot(req.userId);
   res.json(snapshotFor(db, req.userId));
@@ -1085,19 +1086,19 @@ app.post('/me/photo', auth, (req, res) => {
 
 app.post('/me/photos', auth, (req, res) => {
   const user = userById(db, req.userId);
-  if (!user) return res.status(404).json({ error: 'Profil yok.' });
+  if (!user) return res.status(404).json(fail(req, 'Profil yok.'));
   if (tooMany(req, 'photo', 12, 60 * 60 * 1000)) {
-    return rateLimited(res, 'Fotoğraf limiti doldu. Biraz sonra dene.');
+    return rateLimited(req, res, 'Fotoğraf limiti doldu. Biraz sonra dene.');
   }
   const list = Array.isArray(req.body?.dataUrls)
     ? req.body.dataUrls
     : [req.body?.dataUrl];
   if (!list.length) {
-    return res.status(400).json({ error: 'Geçerli bir fotoğraf seç.' });
+    return res.status(400).json(fail(req, 'Geçerli bir fotoğraf seç.'));
   }
   for (const item of list) {
     const saved = appendProfilePhoto(user, item);
-    if (saved.error) return res.status(400).json({ error: saved.error });
+    if (saved.error) return res.status(400).json(fail(req, saved.error));
   }
   save(db);
   emitSnapshot(req.userId);
@@ -1106,10 +1107,10 @@ app.post('/me/photos', auth, (req, res) => {
 
 app.post('/me/pro', auth, (req, res) => {
   if (!adminOk(req)) {
-    return res.status(404).json({ error: 'Yok.' });
+    return res.status(404).json(fail(req, 'Yok.'));
   }
   const user = userById(db, req.userId);
-  if (!user) return res.status(404).json({ error: 'Profil yok.' });
+  if (!user) return res.status(404).json(fail(req, 'Profil yok.'));
   const plan = req.body?.plan === 'monthly' ? 'monthly' : 'yearly';
   const days = plan === 'monthly' ? 30 : 365;
   user.proPlan = plan;
@@ -1121,16 +1122,16 @@ app.post('/me/pro', auth, (req, res) => {
 
 app.post('/me/ad-mark', auth, (req, res) => {
   const user = userById(db, req.userId);
-  if (!user) return res.status(404).json({ error: 'Profil yok.' });
+  if (!user) return res.status(404).json(fail(req, 'Profil yok.'));
   if (isProUser(user)) {
-    return res.status(400).json({ error: 'Pro’da reklam hakkı yok.' });
+    return res.status(400).json(fail(req, 'Pro’da reklam hakkı yok.'));
   }
   if (tooMany(req, 'admark', 8, 60 * 60 * 1000)) {
-    return rateLimited(res, 'Reklam hakkı biraz sonra.');
+    return rateLimited(req, res, 'Reklam hakkı biraz sonra.');
   }
   const used = syncAdMarks(user);
   if (used >= FREE_AD_MARKS) {
-    return res.status(400).json({ error: 'Bugünkü reklam hakların doldu (+2).' });
+    return res.status(400).json(fail(req, 'Bugünkü reklam hakların doldu (+2).'));
   }
   user.adMarksToday = used + 1;
   user.adMarksDay = dayStartMs();
@@ -1143,7 +1144,7 @@ app.get('/geo/reverse', auth, async (req, res) => {
   const lat = Number(req.query.lat);
   const lng = Number(req.query.lng);
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
-    return res.status(400).json({ error: 'Konum alınamadı.' });
+    return res.status(400).json(fail(req, 'Konum alınamadı.'));
   }
   const geo = await reverseLookup(lat, lng);
   res.json(geo);
@@ -1290,7 +1291,7 @@ app.get('/geo/places', auth, async (req, res) => {
   const lat = Number(req.query.lat);
   const lng = Number(req.query.lng);
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
-    return res.status(400).json({ error: 'Konum alınamadı.' });
+    return res.status(400).json(fail(req, 'Konum alınamadı.'));
   }
   try {
     res.json({ places: await lookupNearbyPlaces(lat, lng) });
@@ -1301,7 +1302,7 @@ app.get('/geo/places', auth, async (req, res) => {
 
 app.post('/pins', auth, async (req, res) => {
   if (tooMany(req, 'pin', 20, 60 * 60 * 1000)) {
-    return rateLimited(res, 'Bir saatte en fazla 20 mark. Biraz bekle.');
+    return rateLimited(req, res, 'Bir saatte en fazla 20 mark. Biraz bekle.');
   }
   const kind =
     req.body?.kind === 'activity'
@@ -1312,22 +1313,23 @@ app.post('/pins', auth, async (req, res) => {
   const lat = Number(req.body?.lat);
   const lng = Number(req.body?.lng);
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
-    return res.status(400).json({ error: 'Konum alınamadı.' });
+    return res.status(400).json(fail(req, 'Konum alınamadı.'));
   }
   const me = userById(db, req.userId);
-  if (!me) return res.status(404).json({ error: 'Profil yok.' });
+  if (!me) return res.status(404).json(fail(req, 'Profil yok.'));
   const cap = dailyPinCap(me);
   if (pinsUsedToday(db, req.userId) >= cap) {
-    return res.status(400).json({
-      error: isProUser(me)
-        ? 'Günlük Pro hakkın doldu (12/gün).'
-        : 'Günlük hakkın doldu. Reklam izleyerek +2 mark daha açabilirsin.',
-    });
+    return res.status(400).json(
+      fail(
+        req,
+        isProUser(me)
+          ? 'Günlük Pro hakkın doldu (12/gün).'
+          : 'Günlük hakkın doldu. Reklam izleyerek +2 mark daha açabilirsin.',
+      ),
+    );
   }
   if (kind === 'chat' && !isProUser(me)) {
-    return res.status(400).json({
-      error: 'Sohbet noktası Pro’ya özel.',
-    });
+    return res.status(400).json(fail(req, 'Sohbet noktası Pro’ya özel.'));
   }
   const t = now();
   const meetAtRaw = Number(req.body?.meetAt);
@@ -1365,7 +1367,7 @@ app.post('/pins', auth, async (req, res) => {
     isProUser(me) && (Boolean(req.body?.anonymous) || text.includes('[[ANON]]'));
   text = text.replace(/\n?\[\[ANON\]\]/g, '').trim();
   if (text.length < 8) {
-    return res.status(400).json({ error: 'Ne yapmak istediğini bir cümleyle yaz.' });
+    return res.status(400).json(fail(req, 'Ne yapmak istediğini bir cümleyle yaz.'));
   }
   let photoUrl = '';
   if (rawPhoto) {
@@ -1435,9 +1437,9 @@ app.post('/pins', auth, async (req, res) => {
 app.delete('/pins/:id', auth, (req, res) => {
   prune(db);
   const pin = db.pins.find((p) => p.id === req.params.id);
-  if (!pin) return res.status(404).json({ error: 'Bu mark yok.' });
+  if (!pin) return res.status(404).json(fail(req, 'Bu mark yok.'));
   if (pin.authorId !== req.userId) {
-    return res.status(403).json({ error: 'Sadece kendi mark’ını kapatabilirsin.' });
+    return res.status(403).json(fail(req, 'Sadece kendi mark’ını kapatabilirsin.'));
   }
   const watchers = [
     pin.authorId,
@@ -1453,29 +1455,29 @@ app.delete('/pins/:id', auth, (req, res) => {
 
 app.post('/pins/:id/join', auth, (req, res) => {
   if (tooMany(req, 'join', 20, 10 * 60 * 1000)) {
-    return rateLimited(res, 'Çok sık istek gönderdin. Biraz sonra dene.');
+    return rateLimited(req, res, 'Çok sık istek gönderdin. Biraz sonra dene.');
   }
   prune(db);
   const pin = db.pins.find((p) => p.id === req.params.id && p.expiresAt > now() && !p.retiredAt);
-  if (!pin) return res.status(404).json({ error: 'Bu mark artık yok.' });
+  if (!pin) return res.status(404).json(fail(req, 'Bu mark artık yok.'));
   if (pin.authorId === req.userId) {
-    return res.status(400).json({ error: 'Kendi mark’ına istek gönderemezsin.' });
+    return res.status(400).json(fail(req, 'Kendi mark’ına istek gönderemezsin.'));
   }
   if (blockedPair(db, req.userId, pin.authorId)) {
-    return res.status(400).json({ error: 'Bu kişiyle eşleşme kapalı.' });
+    return res.status(400).json(fail(req, 'Bu kişiyle eşleşme kapalı.'));
   }
   const existing = db.requests.find(
     (r) => r.pinId === pin.id && r.fromId === req.userId && r.status !== 'declined',
   );
   if (existing?.status === 'pending') {
-    return res.status(400).json({ error: 'İstek zaten gönderildi, onay bekleniyor.' });
+    return res.status(400).json(fail(req, 'İstek zaten gönderildi, onay bekleniyor.'));
   }
   if (existing?.status === 'accepted') {
-    return res.status(400).json({ error: 'Zaten eşleştiniz.' });
+    return res.status(400).json(fail(req, 'Zaten eşleştiniz.'));
   }
   const cap = pinCapacity(pin);
   if (cap && pinFilled(db, pin) >= cap) {
-    return res.status(400).json({ error: 'Kadro doldu.' });
+    return res.status(400).json(fail(req, 'Kadro doldu.'));
   }
   db.requests.unshift({
     id: uid('req'),
@@ -1503,11 +1505,11 @@ app.post('/requests/:id/decide', auth, (req, res) => {
   const accept = Boolean(req.body?.accept);
   const request = db.requests.find((r) => r.id === req.params.id);
   if (!request || request.status !== 'pending') {
-    return res.status(404).json({ error: 'İstek yok.' });
+    return res.status(404).json(fail(req, 'İstek yok.'));
   }
   const pin = db.pins.find((p) => p.id === request.pinId);
   if (!pin || pin.authorId !== req.userId) {
-    return res.status(403).json({ error: 'Bu istek sana ait değil.' });
+    return res.status(403).json(fail(req, 'Bu istek sana ait değil.'));
   }
   if (!accept) {
     request.status = 'declined';
@@ -1520,7 +1522,7 @@ app.post('/requests/:id/decide', auth, (req, res) => {
     request.status = 'declined';
     save(db);
     emitAllRelated([req.userId, request.fromId]);
-    return res.status(400).json({ error: 'Kadro doldu.' });
+    return res.status(400).json(fail(req, 'Kadro doldu.'));
   }
   request.status = 'accepted';
   const from = userById(db, request.fromId);
@@ -1592,10 +1594,10 @@ app.post('/requests/:id/decide', auth, (req, res) => {
 app.delete('/requests/:id', auth, (req, res) => {
   const request = db.requests.find((r) => r.id === req.params.id);
   if (!request || request.status !== 'pending') {
-    return res.status(404).json({ error: 'İstek yok.' });
+    return res.status(404).json(fail(req, 'İstek yok.'));
   }
   if (request.fromId !== req.userId) {
-    return res.status(403).json({ error: 'Bu isteği sen göndermedin.' });
+    return res.status(403).json(fail(req, 'Bu isteği sen göndermedin.'));
   }
   const pin = db.pins.find((p) => p.id === request.pinId);
   db.requests = db.requests.filter((r) => r.id !== request.id);
@@ -1607,7 +1609,7 @@ app.delete('/requests/:id', auth, (req, res) => {
 app.delete('/chats/:id', auth, (req, res) => {
   const chat = db.chats.find((c) => c.id === req.params.id);
   if (!chat || !(chat.memberIds || []).includes(req.userId)) {
-    return res.status(404).json({ error: 'Sohbet yok.' });
+    return res.status(404).json(fail(req, 'Sohbet yok.'));
   }
   chat.hiddenIds = Array.from(new Set([...(chat.hiddenIds || []), req.userId]));
   save(db);
@@ -1617,7 +1619,7 @@ app.delete('/chats/:id', auth, (req, res) => {
 
 app.post('/chats/:id/messages', auth, (req, res) => {
   if (tooMany(req, 'msg', 40, 60 * 1000)) {
-    return rateLimited(res, 'Çok hızlı yazıyorsun. Bir dakika bekle.');
+    return rateLimited(req, res, 'Çok hızlı yazıyorsun. Bir dakika bekle.');
   }
   let text = String(req.body?.text || '').trim();
   let raw = String(req.body?.dataUrl || req.body?.img || '').replace(/\s/g, '');
@@ -1630,26 +1632,26 @@ app.post('/chats/:id/messages', auth, (req, res) => {
     const match = raw.match(/^data:image\/[a-zA-Z0-9.+-]+;base64,(.+)$/i);
     const payload = match ? match[1] : /^[A-Za-z0-9+/=]+$/.test(raw) ? raw : '';
     if (!payload) {
-      return res.status(400).json({ error: 'Geçerli bir fotoğraf seç.' });
+      return res.status(400).json(fail(req, 'Geçerli bir fotoğraf seç.'));
     }
     const buf = Buffer.from(payload, 'base64');
     if (!buf.length) {
-      return res.status(400).json({ error: 'Fotoğraf okunamadı.' });
+      return res.status(400).json(fail(req, 'Fotoğraf okunamadı.'));
     }
     if (buf.length > 4.5 * 1024 * 1024) {
-      return res.status(400).json({ error: 'Fotoğraf çok büyük.' });
+      return res.status(400).json(fail(req, 'Fotoğraf çok büyük.'));
     }
     const file = `chat_${uid('img')}.jpg`;
     fs.writeFileSync(path.join(UPLOAD_DIR, file), buf);
     imageUrl = `/uploads/${file}`;
   }
-  if (!text && !imageUrl) return res.status(400).json({ error: 'Boş mesaj.' });
+  if (!text && !imageUrl) return res.status(400).json(fail(req, 'Boş mesaj.'));
   const chat = db.chats.find((c) => c.id === req.params.id);
   if (!chat || !chat.memberIds.includes(req.userId)) {
-    return res.status(404).json({ error: 'Sohbet yok.' });
+    return res.status(404).json(fail(req, 'Sohbet yok.'));
   }
   if (chat.closesAt && chat.closesAt <= now()) {
-    return res.status(400).json({ error: 'Bu sohbet kapandı.' });
+    return res.status(400).json(fail(req, 'Bu sohbet kapandı.'));
   }
   chat.messages.push({
     id: uid('msg'),
@@ -1684,11 +1686,11 @@ app.post('/chats/:id/messages', auth, (req, res) => {
 function chatOwned(req, res) {
   const chat = db.chats.find((c) => c.id === req.params.id);
   if (!chat || !chat.memberIds.includes(req.userId)) {
-    res.status(404).json({ error: 'Sohbet yok.' });
+    res.status(404).json(fail(req, 'Sohbet yok.'));
     return null;
   }
   if (chat.closesAt && chat.closesAt <= now()) {
-    res.status(400).json({ error: 'Bu sohbet kapandı.' });
+    res.status(400).json(fail(req, 'Bu sohbet kapandı.'));
     return null;
   }
   return chat;
@@ -1698,7 +1700,7 @@ app.post('/chats/:id/spin', auth, (req, res) => {
   const chat = chatOwned(req, res);
   if (!chat) return;
   if (chat.lastSpinAt && now() - chat.lastSpinAt < 90 * 1000) {
-    return res.status(400).json({ error: 'Biraz sonra tekrar çevir.' });
+    return res.status(400).json(fail(req, 'Biraz sonra tekrar çevir.'));
   }
   const pin = db.pins.find((p) => p.id === chat.pinId);
   chat.lastSpinAt = now();
@@ -1716,10 +1718,10 @@ app.post('/chats/:id/spin', auth, (req, res) => {
 app.post('/chats/:id/checkin', auth, (req, res) => {
   const chat = db.chats.find((c) => c.id === req.params.id);
   if (!chat || !chat.memberIds.includes(req.userId)) {
-    return res.status(404).json({ error: 'Sohbet yok.' });
+    return res.status(404).json(fail(req, 'Sohbet yok.'));
   }
   if ((db.checkins || []).some((c) => c.chatId === chat.id && c.fromId === req.userId)) {
-    return res.status(400).json({ error: 'Bu buluşmayı zaten işaretledin.' });
+    return res.status(400).json(fail(req, 'Bu buluşmayı zaten işaretledin.'));
   }
   const happened = Boolean(req.body?.happened);
   const pin = db.pins.find((p) => p.id === chat.pinId);
@@ -1804,7 +1806,7 @@ app.post('/safe/:token/ping', auth, (req, res) => {
   const share = (db.safeShares || []).find(
     (s) => s.token === req.params.token && s.userId === req.userId && s.expiresAt > now(),
   );
-  if (!share) return res.status(404).json({ error: 'Paylaşım yok.' });
+  if (!share) return res.status(404).json(fail(req, 'Paylaşım yok.'));
   const lat = Number(req.body?.lat);
   const lng = Number(req.body?.lng);
   if (Number.isFinite(lat) && Number.isFinite(lng)) {
@@ -1861,22 +1863,22 @@ app.get('/api/wall/:userId', maybeAuth, sendWallPosts);
 
 app.post('/api/wall', auth, (req, res) => {
   if (tooMany(req, 'wall', 20, 10 * 60 * 1000)) {
-    return rateLimited(res, 'Çok sık not. Biraz sonra dene.');
+    return rateLimited(req, res, 'Çok sık not. Biraz sonra dene.');
   }
   const authorId = String(req.body?.authorId || req.userId);
   const targetUserId = String(req.body?.targetUserId || req.body?.userId || req.userId);
   if (authorId !== req.userId) {
-    return res.status(403).json({ error: 'Not başkası adına yazılamaz.' });
+    return res.status(403).json(fail(req, 'Not başkası adına yazılamaz.'));
   }
   if (targetUserId !== req.userId) {
-    return res.status(403).json({ error: 'Duvara yalnızca sahibi yazabilir.' });
+    return res.status(403).json(fail(req, 'Duvara yalnızca sahibi yazabilir.'));
   }
   const owner = userById(db, targetUserId);
   const me = userById(db, req.userId);
-  if (!owner || !me) return res.status(404).json({ error: 'Profil yok.' });
+  if (!owner || !me) return res.status(404).json(fail(req, 'Profil yok.'));
   const text = String(req.body?.text || '').trim().slice(0, 280);
   if (text.length < 2) {
-    return res.status(400).json({ error: 'Bir cümle yaz.' });
+    return res.status(400).json(fail(req, 'Bir cümle yaz.'));
   }
   saveWallNote(owner, me, text);
   save(db);
@@ -1889,18 +1891,18 @@ app.post('/api/wall', auth, (req, res) => {
 
 app.post('/users/:id/wall-posts', auth, (req, res) => {
   if (tooMany(req, 'wall', 20, 10 * 60 * 1000)) {
-    return rateLimited(res, 'Çok sık not. Biraz sonra dene.');
+    return rateLimited(req, res, 'Çok sık not. Biraz sonra dene.');
   }
   const wallId = String(req.params.id);
   if (wallId !== req.userId) {
-    return res.status(403).json({ error: 'Duvara yalnızca sahibi yazabilir.' });
+    return res.status(403).json(fail(req, 'Duvara yalnızca sahibi yazabilir.'));
   }
   const owner = userById(db, wallId);
   const me = userById(db, req.userId);
-  if (!owner || !me) return res.status(404).json({ error: 'Profil yok.' });
+  if (!owner || !me) return res.status(404).json(fail(req, 'Profil yok.'));
   const text = String(req.body?.text || '').trim().slice(0, 280);
   if (text.length < 2) {
-    return res.status(400).json({ error: 'Bir cümle yaz.' });
+    return res.status(400).json(fail(req, 'Bir cümle yaz.'));
   }
   saveWallNote(owner, me, text);
   save(db);
@@ -1911,11 +1913,11 @@ app.post('/users/:id/wall-posts', auth, (req, res) => {
 app.delete('/users/:id/wall-posts/:postId', auth, (req, res) => {
   const wallId = String(req.params.id);
   const owner = userById(db, wallId);
-  if (!owner) return res.status(404).json({ error: 'Profil yok.' });
+  if (!owner) return res.status(404).json(fail(req, 'Profil yok.'));
   const post = (owner.wallPosts || []).find((p) => p.id === req.params.postId);
-  if (!post) return res.status(404).json({ error: 'Not yok.' });
+  if (!post) return res.status(404).json(fail(req, 'Not yok.'));
   if (post.fromId !== req.userId && wallId !== req.userId) {
-    return res.status(403).json({ error: 'Bu notu silemezsin.' });
+    return res.status(403).json(fail(req, 'Bu notu silemezsin.'));
   }
   owner.wallPosts = (owner.wallPosts || []).filter((p) => p.id !== req.params.postId);
   save(db);
@@ -1925,17 +1927,17 @@ app.delete('/users/:id/wall-posts/:postId', auth, (req, res) => {
 
 app.post('/users/:id/follow', auth, (req, res) => {
   if (tooMany(req, 'follow', 40, 10 * 60 * 1000)) {
-    return rateLimited(res, 'Çok hızlı takip. Biraz sonra dene.');
+    return rateLimited(req, res, 'Çok hızlı takip. Biraz sonra dene.');
   }
   const otherId = String(req.params.id);
   const me = userById(db, req.userId);
   const other = userById(db, otherId);
-  if (!me || !other) return res.status(404).json({ error: 'Profil yok.' });
+  if (!me || !other) return res.status(404).json(fail(req, 'Profil yok.'));
   if (otherId === req.userId) {
-    return res.status(400).json({ error: 'Kendini takip edemezsin.' });
+    return res.status(400).json(fail(req, 'Kendini takip edemezsin.'));
   }
   if (blockedPair(db, req.userId, otherId)) {
-    return res.status(400).json({ error: 'Bu kişiyle takip kapalı.' });
+    return res.status(400).json(fail(req, 'Bu kişiyle takip kapalı.'));
   }
   db.follows = db.follows || [];
   if (!followEdge(db, req.userId, otherId)) {
@@ -1954,7 +1956,7 @@ app.post('/users/:id/follow', auth, (req, res) => {
 app.delete('/users/:id/follow', auth, (req, res) => {
   const otherId = String(req.params.id);
   const me = userById(db, req.userId);
-  if (!me) return res.status(404).json({ error: 'Profil yok.' });
+  if (!me) return res.status(404).json(fail(req, 'Profil yok.'));
   const before = (db.follows || []).length;
   db.follows = (db.follows || []).filter(
     (f) => !(f.followerId === req.userId && f.followingId === otherId),
@@ -1969,17 +1971,17 @@ app.delete('/users/:id/follow', auth, (req, res) => {
 app.post('/users/:id/hello', auth, (req, res) => {
   try {
     if (tooMany(req, 'hello', 20, 10 * 60 * 1000)) {
-      return rateLimited(res, 'Çok sık selam. Biraz sonra dene.');
+      return rateLimited(req, res, 'Çok sık selam. Biraz sonra dene.');
     }
     const otherId = String(req.params.id);
     const me = userById(db, req.userId);
     const other = userById(db, otherId);
-    if (!me || !other) return res.status(404).json({ error: 'Profil yok.' });
+    if (!me || !other) return res.status(404).json(fail(req, 'Profil yok.'));
     if (otherId === req.userId) {
-      return res.status(400).json({ error: 'Kendine selam atamazsın.' });
+      return res.status(400).json(fail(req, 'Kendine selam atamazsın.'));
     }
     if (blockedPair(db, req.userId, otherId)) {
-      return res.status(400).json({ error: 'Bu kişiyle sohbet kapalı.' });
+      return res.status(400).json(fail(req, 'Bu kişiyle sohbet kapalı.'));
     }
     const t = now();
     const existing = (db.chats || []).find(
@@ -2024,7 +2026,7 @@ app.post('/users/:id/hello', auth, (req, res) => {
     return res.json({ chatId: chat.id, snapshot: snapshotFor(db, req.userId) });
   } catch (err) {
     console.error('hello', err);
-    return res.status(500).json({ error: 'Selam açılamadı.' });
+    return res.status(500).json(fail(req, 'Selam açılamadı.'));
   }
 });
 
@@ -2032,7 +2034,7 @@ app.post('/users/:id/block', auth, (req, res) => {
   const me = userById(db, req.userId);
   const otherId = String(req.params.id);
   if (!me || otherId === req.userId) {
-    return res.status(400).json({ error: 'Engellenemedi.' });
+    return res.status(400).json(fail(req, 'Engellenemedi.'));
   }
   addBlock(db, req.userId, otherId);
   dropFollowsBetween(db, req.userId, otherId);
@@ -2055,7 +2057,7 @@ app.post('/users/:id/block', auth, (req, res) => {
 app.delete('/users/:id/block', auth, (req, res) => {
   const me = userById(db, req.userId);
   const otherId = String(req.params.id);
-  if (!me) return res.status(404).json({ error: 'Profil yok.' });
+  if (!me) return res.status(404).json(fail(req, 'Profil yok.'));
   removeBlock(db, req.userId, otherId);
   save(db);
   emitAllRelated([req.userId, otherId]);
@@ -2064,12 +2066,12 @@ app.delete('/users/:id/block', auth, (req, res) => {
 
 app.post('/users/:id/report', auth, (req, res) => {
   if (tooMany(req, 'report', 8, 60 * 60 * 1000)) {
-    return rateLimited(res, 'Şikayet limiti doldu. Bir saat sonra dene.');
+    return rateLimited(req, res, 'Şikayet limiti doldu. Bir saat sonra dene.');
   }
   const otherId = String(req.params.id);
   const other = userById(db, otherId);
   if (!other || otherId === req.userId) {
-    return res.status(404).json({ error: 'Profil yok.' });
+    return res.status(404).json(fail(req, 'Profil yok.'));
   }
   const reason = String(req.body?.reason || 'other').slice(0, 80);
   db.reports = db.reports || [];
@@ -2080,7 +2082,7 @@ app.post('/users/:id/report', auth, (req, res) => {
       now() - r.at < 30 * 60 * 1000,
   );
   if (recent) {
-    return res.status(400).json({ error: 'Bu kişiyi az önce şikayet ettin.' });
+    return res.status(400).json(fail(req, 'Bu kişiyi az önce şikayet ettin.'));
   }
   db.reports.unshift({
     id: uid('rep'),

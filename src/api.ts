@@ -3,6 +3,7 @@ import Constants from 'expo-constants';
 import type { ChatThread, JoinRequest, Pin, Profile, WallPost } from './types';
 import { mergeWallPosts } from './wall/persist';
 import { readWallFromBio, withWallInBio } from './wall/bio';
+import { acceptLanguage, localError } from './i18n/errors';
 
 function lanHost() {
   const uri = String(
@@ -167,16 +168,17 @@ async function request<T>(
       method: opts.method ?? 'GET',
       headers: {
         'Content-Type': 'application/json',
+        'Accept-Language': acceptLanguage(),
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
       body: opts.body ? JSON.stringify(opts.body) : undefined,
     });
   } catch {
-    throw new ApiError('Sunucuya bağlanılamadı. İnternetini kontrol et.', 0);
+    throw new ApiError(localError('Sunucuya bağlanılamadı. İnternetini kontrol et.'), 0);
   }
   const data = (await res.json().catch(() => ({}))) as T & { error?: string };
   if (!res.ok) {
-    throw new ApiError(data.error || 'Sunucu hatası.', res.status);
+    throw new ApiError(data.error || localError('Sunucu hatası.'), res.status);
   }
   return data;
 }

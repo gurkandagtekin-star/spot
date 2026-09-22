@@ -1,10 +1,12 @@
 import { useSpot } from '../store/SpotContext';
+import { useIap } from '../iap/IapProvider';
 import { adMarksLeft, dailyPinLimit, isProRange } from './limits';
 import type { PinRange } from '../utils';
 
 export function usePro() {
   const spot = useSpot();
-  const isPro = Boolean(spot.me?.isPro);
+  const iap = useIap();
+  const isPro = Boolean(spot.me?.isPro) || iap.hasPro;
   const adMarksToday = Number(spot.me?.adMarksToday) || 0;
   const limit = dailyPinLimit(isPro, adMarksToday);
   return {

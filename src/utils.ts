@@ -1,5 +1,6 @@
 import type { Gender, Pin, PinKind } from './types';
 import { FREE_DAILY_PINS } from './pro/limits';
+import i18n from './i18n/i18n';
 
 export { FREE_DAILY_PINS } from './pro/limits';
 export const TWO_HOURS_MS = 2 * 60 * 60 * 1000;
@@ -44,9 +45,9 @@ export function pinEmbeddedAnon(text: string) {
 }
 
 export function pinKindLabel(kind?: PinKind) {
-  if (kind === 'activity') return 'Aktivite';
-  if (kind === 'chat') return 'Sohbet';
-  return 'Takılalım';
+  if (kind === 'activity') return i18n.t('kind.activity');
+  if (kind === 'chat') return i18n.t('kind.chat');
+  return i18n.t('kind.hangout');
 }
 
 export function withPinMeta(
@@ -81,12 +82,12 @@ export function pinFilledCount(pin: { coming?: number }) {
 }
 
 export function pinQuotaLabel(pin: { coming?: number; capacity?: 2 | 3 | 4 }) {
-  if (!pin.capacity) return 'İsteyen gelsin';
+  if (!pin.capacity) return i18n.t('quota.open');
   const filled = Math.min(pin.capacity, pinFilledCount(pin));
   const open = Math.max(0, pin.capacity - filled);
-  if (open <= 0) return 'Kadro doldu';
-  if (open === 1) return '1 kişilik yer var';
-  return `${open} kişilik yer var`;
+  if (open <= 0) return i18n.t('quota.full');
+  if (open === 1) return i18n.t('quota.one');
+  return i18n.t('quota.many', { count: open });
 }
 
 export function pinEmbeddedPhoto(text: string) {
@@ -126,15 +127,16 @@ export function displayName(profile: {
   return composed || profile.name || '';
 }
 
-export const GENDER_OPTIONS: { id: Gender; label: string }[] = [
-  { id: 'woman', label: 'Kadın' },
-  { id: 'man', label: 'Erkek' },
-  { id: 'other', label: 'Diğer' },
-  { id: 'unspecified', label: 'Belirtmek istemiyorum' },
+export const GENDER_OPTIONS: { id: Gender; labelKey: string }[] = [
+  { id: 'woman', labelKey: 'gender.woman' },
+  { id: 'man', labelKey: 'gender.man' },
+  { id: 'other', labelKey: 'gender.other' },
+  { id: 'unspecified', labelKey: 'gender.unspecified' },
 ];
 
 export function genderLabel(gender?: Gender) {
-  return GENDER_OPTIONS.find((g) => g.id === gender)?.label || '';
+  const opt = GENDER_OPTIONS.find((g) => g.id === gender);
+  return opt ? i18n.t(opt.labelKey) : '';
 }
 
 export function toRad(n: number) {
@@ -163,14 +165,14 @@ export function formatDistance(meters: number) {
 
 export function remainingLabel(expiresAt: number, now = Date.now()) {
   const ms = expiresAt - now;
-  if (ms <= 0) return 'süre doldu';
+  if (ms <= 0) return i18n.t('time.expired');
   const mins = Math.ceil(ms / 60000);
   if (mins >= 60) {
     const h = Math.floor(mins / 60);
     const m = mins % 60;
-    return `${h} sa ${m} dk`;
+    return i18n.t('time.hoursMins', { h, m });
   }
-  return `${mins} dk`;
+  return i18n.t('time.mins', { m: mins });
 }
 
 export function startOfDay(ts = Date.now()) {
@@ -194,11 +196,11 @@ export function pinsLeftToday(
 
 export function formatAgo(ts: number, now = Date.now()) {
   const mins = Math.max(0, Math.round((now - ts) / 60000));
-  if (mins < 1) return 'şimdi';
-  if (mins < 60) return `${mins} dk`;
+  if (mins < 1) return i18n.t('time.now');
+  if (mins < 60) return i18n.t('time.mins', { m: mins });
   const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours} sa`;
-  return `${Math.floor(hours / 24)} gün`;
+  if (hours < 24) return i18n.t('time.hours', { h: hours });
+  return i18n.t('time.days', { d: Math.floor(hours / 24) });
 }
 
 export type PinRange = '1' | '3' | '5' | '15' | 'area' | 'all';

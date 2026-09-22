@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { Animated, Easing, Pressable, StyleSheet, Text, View } from 'react-native';
 import { radius, type ColorTokens } from '../theme';
 import { useThemedStyles } from '../theme/useThemedStyles';
+import { useTranslation } from 'react-i18next';
 
 type Props = {
   visible: boolean;
@@ -10,6 +11,7 @@ type Props = {
 
 export function MapHint({ visible, onDismiss }: Props) {
   const styles = useThemedStyles(createStyles);
+  const { t } = useTranslation();
   const opacity = useRef(new Animated.Value(0)).current;
   const lift = useRef(new Animated.Value(10)).current;
 
@@ -40,10 +42,10 @@ export function MapHint({ visible, onDismiss }: Props) {
 
   return (
     <View pointerEvents="box-none" style={styles.wrap}>
-      <Pressable accessibilityRole="button" accessibilityLabel="İpucunu kapat" onPress={onDismiss}>
+      <Pressable accessibilityRole="button" accessibilityLabel={t('map.hintClose')} onPress={onDismiss}>
         <Animated.View style={[styles.bubble, { opacity, transform: [{ translateY: lift }] }]}>
-          <Text style={styles.kicker}>İlk mark</Text>
-          <Text style={styles.title}>Haritaya dokun ve ilk davetini bırak!</Text>
+          <Text style={styles.kicker}>{t('map.hintKicker')}</Text>
+          <Text style={styles.title}>{t('map.hintTitle')}</Text>
         </Animated.View>
       </Pressable>
     </View>

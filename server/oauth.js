@@ -4,6 +4,7 @@ const path = require('path');
 const express = require('express');
 
 const { assignUsername } = require('./username');
+const { fail, tError } = require('./i18n');
 
 function htmlPage({ title, inner }) {
   return `<!DOCTYPE html>
@@ -598,10 +599,10 @@ function mountOAuth(app, { db, save, uid }) {
     const codeVerifier = String(req.body?.codeVerifier || req.body?.code_verifier || '').trim();
     if (idToken) {
       if (!process.env.GOOGLE_CLIENT_ID) {
-        return res.status(400).json({ error: 'Google ayarlı değil.' });
+        return res.status(400).json(fail(req, 'Google ayarlı değil.'));
       }
     } else if (!googleReady()) {
-      return res.status(400).json({ error: 'Google ayarlı değil.' });
+      return res.status(400).json(fail(req, 'Google ayarlı değil.'));
     }
     try {
       let profile;
@@ -610,13 +611,13 @@ function mountOAuth(app, { db, save, uid }) {
       } else if (code && redirectUri) {
         profile = await exchangeGoogleCode(code, redirectUri, codeVerifier);
       } else {
-        return res.status(400).json({ error: 'Google onayı alınamadı.' });
+        return res.status(400).json(fail(req, 'Google onayı alınamadı.'));
       }
       const { user } = upsertGoogleUser(db, uid, profile);
       res.json({ token: issueToken(db, save, user.id) });
     } catch (err) {
       res.status(400).json({
-        error: err instanceof Error ? err.message : 'Google girişi başarısız.',
+        error: tError(req, err instanceof Error ? err.message : 'Google girişi başarısız.'),
       });
     }
   }
@@ -630,11 +631,11 @@ function mountOAuth(app, { db, save, uid }) {
   });
 
   app.post('/auth/instagram/ticket', (_req, res) => {
-    res.status(410).json({ error: 'Instagram bağlantısı kaldırıldı.' });
+    res.status(410).json(fail(req, 'Instagram bağlantısı kaldırıldı.'));
   });
 
   app.post('/auth/instagram/configure', (_req, res) => {
-    res.status(410).json({ error: 'Instagram bağlantısı kaldırıldı.' });
+    res.status(410).json(fail(req, 'Instagram bağlantısı kaldırıldı.'));
   });
 
   app.get('/auth/google/start', (req, res) => {
@@ -686,11 +687,11 @@ function mountOAuth(app, { db, save, uid }) {
   app.post('/auth/google/native', finishGoogleNative);
 
   app.get('/auth/instagram/start', (_req, res) => {
-    res.status(410).json({ error: 'Instagram bağlantısı kaldırıldı.' });
+    res.status(410).json(fail(req, 'Instagram bağlantısı kaldırıldı.'));
   });
 
   app.get('/auth/instagram/callback', (_req, res) => {
-    res.status(410).json({ error: 'Instagram bağlantısı kaldırıldı.' });
+    res.status(410).json(fail(req, 'Instagram bağlantısı kaldırıldı.'));
   });
 }
 

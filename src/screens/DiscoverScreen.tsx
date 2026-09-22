@@ -29,6 +29,7 @@ import {
   pinQuotaLabel,
   remainingLabel,
 } from '../utils';
+import { useTranslation } from 'react-i18next';
 
 type KindFilter = 'all' | PinKind;
 
@@ -52,6 +53,7 @@ export function DiscoverScreen({
   const { showAlert } = useAlert();
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
+  const { t } = useTranslation();
   const [kind, setKind] = useState<KindFilter>('all');
   const [now, setNow] = useState(() => Date.now());
   const [refreshing, setRefreshing] = useState(false);
@@ -118,7 +120,7 @@ export function DiscoverScreen({
 
   const onDrop = () => {
     if (!pro.isPro && spot.remainingPins <= 0) {
-      if (pro.adMarksLeft > 0) flash('Reklam izleyerek +1 mark açabilirsin.');
+      if (pro.adMarksLeft > 0) flash(t('map.watchAdHint'));
       else onOpenPro();
       return;
     }
@@ -141,15 +143,15 @@ export function DiscoverScreen({
       return;
     }
     if (mine?.status === 'pending') {
-      flash('Onay bekleniyor.');
+      flash(t('discover.pending'));
       return;
     }
     if (pin.capacity && pinFilledCount(pin) >= pin.capacity) {
-      flash('Kadro doldu.');
+      flash(t('discover.full'));
       return;
     }
     const res = await spot.sendJoin(pin.id);
-    flash(res.ok ? 'Selam gitti. Onaylarsa sohbet açılır.' : res.reason);
+    flash(res.ok ? t('discover.helloSent') : res.reason);
   };
 
   const searchingNow = query.trim().length > 0;
@@ -162,7 +164,7 @@ export function DiscoverScreen({
           <TextInput
             value={query}
             onChangeText={setQuery}
-            placeholder="Ara"
+            placeholder={t('discover.search')}
             placeholderTextColor={colors.muted}
             autoCapitalize="none"
             autoCorrect={false}
@@ -172,16 +174,16 @@ export function DiscoverScreen({
         </View>
         {searchingNow ? null : (
           <>
-            <Text style={styles.title}>Şu an yakınında</Text>
+            <Text style={styles.title}>{t('discover.nearbyNow')}</Text>
             <FilterChips
               scroll
               value={kind}
               onChange={setKind}
               options={[
-                { id: 'all', label: 'Tümü' },
-                { id: 'hangout', label: 'Takılalım' },
-                { id: 'activity', label: 'Aktivite' },
-                { id: 'chat', label: 'Sohbet' },
+                { id: 'all', label: t('kind.all') },
+                { id: 'hangout', label: t('kind.hangout') },
+                { id: 'activity', label: t('kind.activity') },
+                { id: 'chat', label: t('kind.chat') },
               ]}
             />
           </>
@@ -197,12 +199,12 @@ export function DiscoverScreen({
           ListEmptyComponent={
             <View style={styles.empty}>
               <Text style={styles.emptyTitle}>
-                {searching ? 'Aranıyor…' : 'Kullanıcı yok'}
+                {searching ? t('discover.searching') : t('discover.noUser')}
               </Text>
               <Text style={styles.emptyText}>
                 {searching
-                  ? 'Kullanıcı adına bakıyoruz.'
-                  : 'Başka bir @kullanıcı adı veya isim dene.'}
+                  ? t('discover.searchingHint')
+                  : t('discover.noUserHint')}
               </Text>
             </View>
           }
@@ -210,7 +212,9 @@ export function DiscoverScreen({
           renderItem={({ item }) => (
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel={`${displayName(item) || item.name} profili`}
+              accessibilityLabel={t('discover.openProfile', {
+                name: displayName(item) || item.name,
+              })}
               style={styles.userRow}
               onPress={() => onOpenProfile(item.id)}
             >
@@ -249,21 +253,21 @@ export function DiscoverScreen({
         ListEmptyComponent={
           nearby.length === 0 ? (
           <View style={styles.empty}>
-            <Text style={styles.emptyTitle}>Yakınında henüz aktif bir Mark yok</Text>
-            <Text style={styles.emptyText}>İlkini sen koy!</Text>
+            <Text style={styles.emptyTitle}>{t('discover.emptyTitle')}</Text>
+            <Text style={styles.emptyText}>{t('discover.emptyText')}</Text>
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Mark koy"
+              accessibilityLabel={t('compose.drop')}
               style={styles.emptyCta}
               onPress={onDrop}
             >
-              <Text style={styles.emptyCtaText}>+ Mark koy</Text>
+              <Text style={styles.emptyCtaText}>{t('discover.dropCta')}</Text>
             </Pressable>
           </View>
           ) : (
             <View style={styles.empty}>
-              <Text style={styles.emptyTitle}>Bu türde yakın mark yok</Text>
-              <Text style={styles.emptyText}>Filtreyi Tümü’ye çek veya başka bir tür dene.</Text>
+              <Text style={styles.emptyTitle}>{t('discover.emptyKindTitle')}</Text>
+              <Text style={styles.emptyText}>{t('discover.emptyKindText')}</Text>
             </View>
           )
         }
@@ -273,11 +277,11 @@ export function DiscoverScreen({
             now={now}
             meters={distanceMeters(spot.location, item)}
             meId={spot.meId}
-            joinLabel={joinLabel(item, spot.meId, spot.requests, spot.chats)}
+            joinLabel={joinLabel(item, spot.meId, spot.requests, spot.chats, t)}
             authorName={
               item.anonymous && item.authorId !== spot.meId
-                ? 'Anonim'
-                : spot.profileById(item.authorId)?.name || 'Biri'
+                ? t('common.anonymous')
+                : spot.profileById(item.authorId)?.name || t('common.someone')
             }
             authorPhoto={
               item.anonymous && item.authorId !== spot.meId
@@ -289,8 +293,8 @@ export function DiscoverScreen({
             onOpenProfile={() => {
               if (item.anonymous && item.authorId !== spot.meId) {
                 showAlert({
-                  title: 'Anonim mark',
-                  message: 'Bu mark anonim olarak oluşturulmuş. Profil duvarı gizli.',
+                  title: t('discover.anonTitle'),
+                  message: t('discover.anonBody'),
                 });
                 return;
               }
@@ -342,17 +346,18 @@ function joinLabel(
   meId: string,
   requests: { pinId: string; fromId: string; status: string }[],
   chats: { pinId: string; memberIds: string[] }[],
+  t: (key: string) => string,
 ) {
-  if (pin.authorId === meId) return 'İstek gönder';
+  if (pin.authorId === meId) return t('discover.joinMine');
   const mine = requests.find((r) => r.pinId === pin.id && r.fromId === meId);
   if (mine?.status === 'accepted') {
     return chats.some((c) => c.pinId === pin.id && c.memberIds.includes(meId))
-      ? 'Sohbete git'
-      : 'Sohbet açık';
+      ? t('discover.openChat')
+      : t('discover.chatOpen');
   }
-  if (mine?.status === 'pending') return 'Onay bekleniyor';
-  if (pin.capacity && pinFilledCount(pin) >= pin.capacity) return 'Kadro doldu';
-  return pin.kind === 'chat' ? 'Selam at' : 'Katıl';
+  if (mine?.status === 'pending') return t('discover.waiting');
+  if (pin.capacity && pinFilledCount(pin) >= pin.capacity) return t('discover.fullCta');
+  return pin.kind === 'chat' ? t('discover.sayHi') : t('discover.join');
 }
 
 function PulseCard({

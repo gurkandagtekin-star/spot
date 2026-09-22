@@ -1,0 +1,12 @@
+{
+  "ios": {
+    "CFBundleDisplayName": "Mark Date",
+    "NSLocationWhenInUseUsageDescription": "Mark Date uses your location to show nearby meetups.",
+    "NSPhotoLibraryUsageDescription": "Mark Date accesses your library for profile and chat photos.",
+    "NSCameraUsageDescription": "Mark Date uses the camera to add photos to chat.",
+    "NSFaceIDUsageDescription": "Mark Date can use Face ID to keep your sign-in key on this device."
+  },
+  "android": {
+    "app_name": "Mark Date"
+  }
+}

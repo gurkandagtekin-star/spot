@@ -1,4 +1,5 @@
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useTranslation } from 'react-i18next';
 import { type PinRange } from '../utils';
 
 const PINK = '#FF5E97';
@@ -6,15 +7,16 @@ const PINK = '#FF5E97';
 const OPTIONS: {
   id: PinRange;
   title: string;
-  unit?: string;
+  unit?: boolean;
   icon?: 'pin' | 'all';
+  titleKey?: 'range.area' | 'range.all';
 }[] = [
-  { id: '1', title: '1', unit: 'km' },
-  { id: '3', title: '3', unit: 'km' },
-  { id: '5', title: '5', unit: 'km' },
-  { id: '15', title: '15', unit: 'km' },
-  { id: 'area', title: 'Semt', icon: 'pin' },
-  { id: 'all', title: 'Tümü', icon: 'all' },
+  { id: '1', title: '1', unit: true },
+  { id: '3', title: '3', unit: true },
+  { id: '5', title: '5', unit: true },
+  { id: '15', title: '15', unit: true },
+  { id: 'area', title: 'Semt', icon: 'pin', titleKey: 'range.area' },
+  { id: 'all', title: 'Tümü', icon: 'all', titleKey: 'range.all' },
 ];
 
 export function RadiusChips({
@@ -26,6 +28,7 @@ export function RadiusChips({
   onChange: (next: PinRange) => void;
   locked?: PinRange[];
 }) {
+  const { t } = useTranslation();
   return (
     <ScrollView
       horizontal
@@ -36,22 +39,28 @@ export function RadiusChips({
       {OPTIONS.map((opt) => {
         const on = opt.id === value;
         const isLocked = Boolean(locked?.includes(opt.id));
+        const title = opt.titleKey ? t(opt.titleKey) : opt.title;
+        const unit = opt.unit ? t('range.km') : undefined;
+        const a11yLabel = unit ? `${title} ${unit}` : title;
         return (
           <Pressable
             key={opt.id}
             accessibilityRole="button"
             accessibilityState={{ selected: on, disabled: false }}
-            accessibilityLabel={`Görünür mesafe ${opt.unit ? `${opt.title} ${opt.unit}` : opt.title}${isLocked ? ' · Pro' : ''}`}
+            accessibilityLabel={t(
+              isLocked ? 'range.distanceA11yPro' : 'range.distanceA11y',
+              { label: a11yLabel },
+            )}
             onPress={() => onChange(opt.id)}
             style={[styles.pill, on && styles.pillOn, isLocked && !on && styles.pillLocked]}
           >
             {opt.icon === 'pin' ? <PinGlyph on={on} /> : null}
             {opt.icon === 'all' ? <AllGlyph on={on} /> : null}
-            <Text style={[styles.title, on && styles.titleOn]}>{opt.title}</Text>
-            {opt.unit ? (
-              <Text style={[styles.unit, on && styles.unitOn]}>{opt.unit}</Text>
+            <Text style={[styles.title, on && styles.titleOn]}>{title}</Text>
+            {unit ? (
+              <Text style={[styles.unit, on && styles.unitOn]}>{unit}</Text>
             ) : isLocked ? (
-              <Text style={[styles.unit, on && styles.unitOn]}>Pro</Text>
+              <Text style={[styles.unit, on && styles.unitOn]}>{t('common.pro')}</Text>
             ) : null}
           </Pressable>
         );

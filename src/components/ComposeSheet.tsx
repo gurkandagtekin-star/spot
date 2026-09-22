@@ -16,6 +16,7 @@ import { useAlert } from '../context/AlertContext';
 import { radius, type ColorTokens } from '../theme';
 import { useTheme } from '../theme/ThemeContext';
 import { useThemedStyles } from '../theme/useThemedStyles';
+import { useTranslation } from 'react-i18next';
 import type { PinKind } from '../types';
 
 type Props = {
@@ -79,6 +80,7 @@ export function ComposeSheet({
   const { showAlert } = useAlert();
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
+  const { t } = useTranslation();
   const [text, setText] = useState('');
   const [kind, setKind] = useState<PinKind>('hangout');
   const [whenNow, setWhenNow] = useState(true);
@@ -124,7 +126,7 @@ export function ComposeSheet({
         const picked = await pickMeetupPhoto(source);
         if (picked) setPhoto(picked);
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Fotoğraf alınamadı.');
+        setError(err instanceof Error ? err.message : t('compose.photoFail'));
       } finally {
         setPicking(false);
       }
@@ -133,12 +135,12 @@ export function ComposeSheet({
 
   const pickSource = () => {
     showAlert({
-      title: kind === 'chat' ? 'Görsel ekle' : 'Buluşma fotoğrafı',
-      message: kind === 'chat' ? 'İstersen bir kare koy.' : 'Mekândan bir kare ekle.',
+      title: kind === 'chat' ? t('compose.addVisual') : t('compose.meetPhoto'),
+      message: kind === 'chat' ? t('compose.visualHint') : t('compose.meetHint'),
       actions: [
-        { text: 'Kamera', onPress: () => addPhoto('camera') },
-        { text: 'Galeri', onPress: () => addPhoto('library') },
-        { text: 'Vazgeç', style: 'cancel' },
+        { text: t('common.camera'), onPress: () => addPhoto('camera') },
+        { text: t('common.gallery'), onPress: () => addPhoto('library') },
+        { text: t('common.cancel'), style: 'cancel' },
       ],
     });
   };
@@ -146,7 +148,7 @@ export function ComposeSheet({
   const submit = async () => {
     if (kind === 'chat' && !isPro) {
       onOpenPro?.();
-      setError('Sohbet noktası Pro’ya özel.');
+      setError(t('map.chatPro'));
       return;
     }
     if (featured && !isPro) {
@@ -163,7 +165,7 @@ export function ComposeSheet({
         if (!ok) return;
       } else {
         onOpenPro?.();
-        setError('Günlük hakkın doldu.');
+        setError(t('compose.quota'));
         return;
       }
     }
@@ -199,15 +201,15 @@ export function ComposeSheet({
             <Pressable
               accessibilityRole="switch"
               accessibilityState={{ checked: featured }}
-              accessibilityLabel="Öne çıkar"
+              accessibilityLabel={t('compose.feature')}
               onPress={() => setFeatured((v) => !v)}
               style={[styles.featRow, featured && styles.featRowOn]}
             >
               <View style={{ flex: 1 }}>
                 <Text style={[styles.featTitle, featured && styles.featTitleOn]}>
-                  Öne çıkar
+                  {t('compose.feature')}
                 </Text>
-                <Text style={styles.featSub}>Haritada mor-turuncu ışıltı.</Text>
+                <Text style={styles.featSub}>{t('compose.featureSub')}</Text>
               </View>
               <Switch
                 value={featured}
@@ -219,13 +221,13 @@ export function ComposeSheet({
           ) : (
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Öne çıkar · Pro"
+              accessibilityLabel={t('compose.featurePro')}
               onPress={() => onOpenPro?.()}
               style={styles.featRow}
             >
               <View style={{ flex: 1 }}>
-                <Text style={styles.featTitle}>Öne çıkar · Pro</Text>
-                <Text style={styles.featSub}>Haritada neon ışıltılı sınır.</Text>
+                <Text style={styles.featTitle}>{t('compose.featurePro')}</Text>
+                <Text style={styles.featSub}>{t('compose.featureSubLocked')}</Text>
               </View>
             </Pressable>
           )}
@@ -233,14 +235,14 @@ export function ComposeSheet({
           <Pressable
             accessibilityRole="switch"
             accessibilityState={{ checked: anonymous }}
-            accessibilityLabel="Anonim olarak paylaş"
+            accessibilityLabel={t('compose.anon')}
             onPress={() => setAnonymous((v) => !v)}
             style={styles.anonRow}
           >
             <View style={{ flex: 1 }}>
-              <Text style={styles.anonTitle}>Anonim olarak paylaş</Text>
+              <Text style={styles.anonTitle}>{t('compose.anon')}</Text>
               <Text style={styles.anonSub}>
-                Haritada adın ve fotoğrafın gizlenir. Eşleşince sohbette görünür.
+                {t('compose.anonSub')}
               </Text>
             </View>
             <Switch
@@ -253,23 +255,23 @@ export function ComposeSheet({
           ) : (
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Anonim paylaşım · Pro"
+              accessibilityLabel={t('compose.anonPro')}
               onPress={() => onOpenPro?.()}
               style={styles.anonRow}
             >
               <View style={{ flex: 1 }}>
-                <Text style={styles.anonTitle}>Anonim paylaşım · Pro</Text>
+                <Text style={styles.anonTitle}>{t('compose.anonPro')}</Text>
                 <Text style={styles.anonSub}>
-                  Haritada adın ve fotoğrafın gizlenir.
+                  {t('compose.anonSubLocked')}
                 </Text>
               </View>
             </Pressable>
           )}
-          <Text style={styles.label}>Not ve fotoğraf</Text>
+          <Text style={styles.label}>{t('compose.notePhoto')}</Text>
           <View style={styles.composer}>
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel={photo ? 'Fotoğrafı değiştir' : 'Mekân fotoğrafı ekle'}
+              accessibilityLabel={photo ? t('compose.changePhoto') : t('compose.addVenuePhoto')}
               style={styles.thumb}
               onPress={pickSource}
               disabled={picking}
@@ -279,7 +281,7 @@ export function ComposeSheet({
                   <Image source={{ uri: photo.uri }} style={styles.thumbImg} />
                   <Pressable
                     accessibilityRole="button"
-                    accessibilityLabel="Fotoğrafı kaldır"
+                    accessibilityLabel={t('compose.removePhoto')}
                     hitSlop={8}
                     onPress={() => setPhoto(null)}
                     style={styles.thumbX}
@@ -290,7 +292,7 @@ export function ComposeSheet({
               ) : (
                 <View style={styles.thumbEmpty}>
                   <Text style={styles.thumbPlus}>{picking ? '…' : '＋'}</Text>
-                  <Text style={styles.thumbCap}>Foto</Text>
+                  <Text style={styles.thumbCap}>{t('compose.photoCap')}</Text>
                 </View>
               )}
             </Pressable>
@@ -298,9 +300,7 @@ export function ComposeSheet({
               value={text}
               onChangeText={setText}
               placeholder={
-                kind === 'chat'
-                  ? 'Ne konuşmak istiyorsun? Yüz yüze şart değil.'
-                  : 'Burada buluşma var, gelmek isteyen yazsın.'
+                kind === 'chat' ? t('compose.phChat') : t('compose.phMeet')
               }
               placeholderTextColor={colors.muted}
               style={styles.input}
@@ -311,22 +311,22 @@ export function ComposeSheet({
           {error ? <Text style={styles.error}>{error}</Text> : null}
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Mark koy"
+            accessibilityLabel={t('compose.drop')}
             style={styles.cta}
             onPress={() => void submit()}
           >
             <Text style={styles.ctaText}>
               {remaining <= 0 && adMarksLeft > 0
-                ? 'Reklam izle, +1 mark'
-                : 'Mark koy'}
+                ? t('compose.watchAd')
+                : t('compose.drop')}
             </Text>
           </Pressable>
         </>
       }
     >
-          <Text style={styles.kicker}>Yeni mark</Text>
+          <Text style={styles.kicker}>{t('compose.kicker')}</Text>
           <Text style={styles.title}>
-            {kind === 'chat' ? 'Yakındakilerle sohbet' : 'Buluşma yerini işaretledin'}
+            {kind === 'chat' ? t('compose.titleChat') : t('compose.titleMeet')}
           </Text>
           {kind !== 'chat' && placeName ? (
             <View style={styles.placeChip}>
@@ -337,26 +337,26 @@ export function ComposeSheet({
           ) : null}
           {kind === 'chat' ? (
             <Text style={styles.sub}>
-              Konum sadece yakındakileri bulmak için. Yüz yüze şart değil.
-              {isPro ? ' 16 saat sonra silinir.' : ''}
+              {t('compose.chatSub')}
+              {isPro ? t('compose.chatTtl') : ''}
             </Text>
           ) : (
             <Text style={styles.sub}>
-              Bugün {remaining} hakkın kaldı.
-              {isPro ? ' Pro mark 16 saat kalır.' : ' Mark 2 saat sonra silinir.'}
+              {t('compose.remaining', { count: remaining })}
+              {isPro ? t('compose.ttlPro') : t('compose.ttlFree')}
               {!isPro && adMarksLeft > 0
-                ? ` Reklamla +${adMarksLeft} hak daha.`
+                ? t('compose.adExtra', { count: adMarksLeft })
                 : ''}
             </Text>
           )}
 
-          <Text style={styles.label}>Ne yapıyorsun?</Text>
+          <Text style={styles.label}>{t('compose.what')}</Text>
           <FilterChips
             wrap
             options={[
-              { id: 'hangout', label: 'Takılalım' },
-              { id: 'activity', label: 'Aktivite' },
-              { id: 'chat', label: isPro ? 'Sadece sohbet' : 'Sadece sohbet · Pro' },
+              { id: 'hangout', label: t('kind.hangout') },
+              { id: 'activity', label: t('kind.activity') },
+              { id: 'chat', label: isPro ? t('compose.chatOnly') : t('compose.chatOnlyPro') },
             ]}
             value={kind}
             onChange={(next) => {
@@ -373,7 +373,7 @@ export function ComposeSheet({
           />
           {kind !== 'chat' ? (
             <>
-          <Text style={styles.label}>Ne zaman?</Text>
+          <Text style={styles.label}>{t('compose.when')}</Text>
           <View style={styles.whenRow}>
             <Pressable
               accessibilityRole="button"
@@ -385,7 +385,7 @@ export function ComposeSheet({
               style={[styles.whenChip, whenNow && styles.whenChipOn]}
             >
               <Text style={[styles.whenChipTxt, whenNow && styles.whenChipTxtOn]}>
-                Şimdi
+                {t('compose.now')}
               </Text>
             </Pressable>
             <Pressable
@@ -399,7 +399,7 @@ export function ComposeSheet({
               style={[styles.clockBtn, !whenNow && styles.clockBtnOn]}
             >
               <Text style={[styles.clockFace, !whenNow && styles.clockFaceOn]}>
-                {whenNow ? 'Saat seç' : `${pad(clock.hour)}:${pad(clock.minute)}`}
+                {whenNow ? t('compose.pickTime') : `${pad(clock.hour)}:${pad(clock.minute)}`}
               </Text>
             </Pressable>
           </View>
@@ -417,25 +417,25 @@ export function ComposeSheet({
               />
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel="Saati onayla"
+                accessibilityLabel={t('compose.confirmTime')}
                 style={styles.wheelDone}
                 onPress={() => setClockOpen(false)}
               >
-                <Text style={styles.wheelDoneTxt}>Tamam</Text>
+                <Text style={styles.wheelDoneTxt}>{t('common.ok')}</Text>
               </Pressable>
             </View>
           ) : null}
             </>
           ) : null}
 
-          <Text style={styles.label}>Kaç kişi?</Text>
+          <Text style={styles.label}>{t('compose.howMany')}</Text>
           <FilterChips
             wrap
             options={[
-              { id: 'any', label: 'Fark etmez' },
-              { id: '2', label: '2 kişi' },
-              { id: '3', label: '3 kişi' },
-              { id: '4', label: '4 kişi' },
+              { id: 'any', label: t('compose.any') },
+              { id: '2', label: t('compose.people', { count: 2 }) },
+              { id: '3', label: t('compose.people', { count: 3 }) },
+              { id: '4', label: t('compose.people', { count: 4 }) },
             ]}
             value={seats}
             onChange={setSeats}

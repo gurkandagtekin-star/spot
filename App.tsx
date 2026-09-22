@@ -27,6 +27,9 @@ import { loadWelcomeSeen, markWelcomeSeen } from './src/onboard/welcome';
 import { AlertProvider } from './src/context/AlertContext';
 import { ThemeProvider, useTheme } from './src/theme/ThemeContext';
 import { AdsProvider } from './src/ads/AdsContext';
+import { IapProvider } from './src/iap/IapProvider';
+import './src/i18n/i18n';
+import { I18nProvider } from './src/i18n/I18nProvider';
 import type { MapIntent, Screen } from './src/types';
 
 const TAB_ORDER: Exclude<Screen, 'chat'>[] = ['discover', 'map', 'chats', 'profile'];
@@ -332,15 +335,19 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <ThemeProvider>
+        <I18nProvider>
         <AlertProvider>
           <AppShell>
             <SpotProvider>
+              <IapProvider>
               <AdsProvider>
                 <Root />
               </AdsProvider>
+              </IapProvider>
             </SpotProvider>
           </AppShell>
         </AlertProvider>
+        </I18nProvider>
       </ThemeProvider>
     </SafeAreaProvider>
   );

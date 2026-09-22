@@ -21,6 +21,7 @@ import { PhotoPeek } from '../components/PhotoPeek';
 import { pickChatPhoto, setMediaPickerOpen } from '../media/pickPhoto';
 import { useSpot } from '../store/SpotContext';
 import { atHandle, remainingLabel } from '../utils';
+import { useTranslation } from 'react-i18next';
 import type { ChatMessage } from '../types';
 
 type Props = {
@@ -33,29 +34,33 @@ type Row =
   | { kind: 'day'; id: string; label: string }
   | { kind: 'msg'; id: string; msg: ChatMessage };
 
-function dayLabel(ts: number) {
+function dayLabel(ts: number, t: (key: string) => string, locale: string) {
   const d = new Date(ts);
   const today = new Date();
   const sameDay = (a: Date, b: Date) =>
     a.getFullYear() === b.getFullYear() &&
     a.getMonth() === b.getMonth() &&
     a.getDate() === b.getDate();
-  if (sameDay(d, today)) return 'Bugün';
+  if (sameDay(d, today)) return t('time.today');
   const y = new Date(today);
   y.setDate(today.getDate() - 1);
-  if (sameDay(d, y)) return 'Dün';
-  return d.toLocaleDateString('tr-TR', {
+  if (sameDay(d, y)) return t('time.yesterday');
+  return d.toLocaleDateString(locale === 'tr' ? 'tr-TR' : 'en-US', {
     day: 'numeric',
     month: 'long',
     year: 'numeric',
   });
 }
 
-function rowsFromMessages(messages: ChatMessage[]): Row[] {
+function rowsFromMessages(
+  messages: ChatMessage[],
+  t: (key: string) => string,
+  locale: string,
+): Row[] {
   const rows: Row[] = [];
   let lastDay = '';
   for (const msg of messages) {
-    const label = dayLabel(msg.at);
+    const label = dayLabel(msg.at, t, locale);
     if (label !== lastDay) {
       lastDay = label;
       rows.push({ kind: 'day', id: `day-${msg.at}`, label });
@@ -68,6 +73,7 @@ function rowsFromMessages(messages: ChatMessage[]): Row[] {
 export function ChatScreen({ chatId, onBack, onOpenProfile }: Props) {
   const spot = useSpot();
   const { showAlert } = useAlert();
+  const { t, i18n } = useTranslation();
   const insets = useSafeAreaInsets();
   const [text, setText] = useState('');
   const [safetyOpen, setSafetyOpen] = useState(false);
@@ -94,8 +100,8 @@ export function ChatScreen({ chatId, onBack, onOpenProfile }: Props) {
   const pin = chat ? spot.pins.find((p) => p.id === chat.pinId) : undefined;
   const closes = chat?.closesAt || pin?.expiresAt;
   const rows = useMemo(
-    () => rowsFromMessages(chat?.messages ?? []),
-    [chat?.messages],
+    () => rowsFromMessages(chat?.messages ?? [], t, i18n.language),
+    [chat?.messages, t, i18n.language],
   );
 
   useEffect(() => {
@@ -133,10 +139,10 @@ export function ChatScreen({ chatId, onBack, onOpenProfile }: Props) {
   if (!chat) {
     return (
       <View style={styles.page}>
-        <Pressable onPress={onBack} accessibilityRole="button" accessibilityLabel="Geri">
+        <Pressable onPress={onBack} accessibilityRole="button" accessibilityLabel={t('common.back')}>
           <Text style={styles.back}>‹</Text>
         </Pressable>
-        <Text style={styles.empty}>Bu sohbet kapandı. Mark süresi doldu.</Text>
+        <Text style={styles.empty}>{t('chat.closed')}</Text>
       </View>
     );
   }
@@ -144,7 +150,7 @@ export function ChatScreen({ chatId, onBack, onOpenProfile }: Props) {
   const canSend = Boolean(text.trim()) && !sendingPhoto;
   const active = Boolean(closes && closes > now);
   const place = pin?.kind === 'chat' ? null : pin?.placeName;
-  const subtitle = [place || null, active ? 'Aktif' : remainingLabel(closes || 0, now) || 'Kapandı']
+  const subtitle = [place || null, active ? t('chat.active') : remainingLabel(closes || 0, now) || t('chat.ended')]
     .filter(Boolean)
     .join('  •  ');
 
@@ -155,7 +161,7 @@ export function ChatScreen({ chatId, onBack, onOpenProfile }: Props) {
     const res = await spot.sendMessage(chat.id, trimmed);
     if (!res.ok) {
       setText(trimmed);
-      showAlert({ title: 'Mesaj', message: res.reason });
+      showAlert({ title: t('chat.message'), message: res.reason });
       return;
     }
     scrollToLatest(true);
@@ -169,17 +175,17 @@ export function ChatScreen({ chatId, onBack, onOpenProfile }: Props) {
       const targetId = chat.id;
       const picked = await pickChatPhoto(source);
       if (!picked?.dataUrl || picked.dataUrl.length < 80) {
-        if (picked) showAlert({ title: 'Fotoğraf', message: 'Fotoğraf okunamadı, tekrar dene.' });
+        if (picked) showAlert({ title: t('chat.photoTitle'), message: t('chat.photoFail') });
         return;
       }
       setSendingPhoto(true);
       const res = await spot.sendMessage(targetId, '', { dataUrl: picked.dataUrl });
-      if (!res.ok) showAlert({ title: 'Fotoğraf', message: res.reason });
+      if (!res.ok) showAlert({ title: t('chat.photoTitle'), message: res.reason });
       else scrollToLatest(true);
     } catch (err) {
       showAlert({
-        title: source === 'camera' ? 'Kamera' : 'Galeri',
-        message: err instanceof Error ? err.message : 'Açılamadı.',
+        title: source === 'camera' ? t('common.camera') : t('common.gallery'),
+        message: err instanceof Error ? err.message : t('chat.openFail'),
       });
     } finally {
       pickingRef.current = false;
@@ -190,12 +196,12 @@ export function ChatScreen({ chatId, onBack, onOpenProfile }: Props) {
 
   const attach = () => {
     showAlert({
-      title: 'Ekle',
-      message: 'Sohbete bir kare koy.',
+      title: t('chat.add'),
+      message: t('chat.addHint'),
       actions: [
-        { text: 'Kamera', onPress: () => void sendPhoto('camera') },
-        { text: 'Galeri', onPress: () => void sendPhoto('library') },
-        { text: 'Vazgeç', style: 'cancel' },
+        { text: t('common.camera'), onPress: () => void sendPhoto('camera') },
+        { text: t('common.gallery'), onPress: () => void sendPhoto('library') },
+        { text: t('common.cancel'), style: 'cancel' },
       ],
     });
   };
@@ -209,7 +215,7 @@ export function ChatScreen({ chatId, onBack, onOpenProfile }: Props) {
           <Pressable
             onPress={onBack}
             accessibilityRole="button"
-            accessibilityLabel="Geri"
+            accessibilityLabel={t('common.back')}
             hitSlop={8}
             style={styles.backHit}
           >
@@ -234,13 +240,13 @@ export function ChatScreen({ chatId, onBack, onOpenProfile }: Props) {
               {other?.name ?? 'Sohbet'}
             </Text>
             <Text style={styles.note} numberOfLines={1}>
-              {subtitle || 'Aktif'}
+              {subtitle || t('chat.active')}
             </Text>
           </Pressable>
           {otherId ? (
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Menü"
+              accessibilityLabel={t('common.menu')}
               hitSlop={8}
               onPress={() => setSafetyOpen((v) => !v)}
               style={styles.menuHit}
@@ -260,24 +266,24 @@ export function ChatScreen({ chatId, onBack, onOpenProfile }: Props) {
               onPress={async () => {
                 const res = await spot.startSafeShare(chat.id);
                 if (!res.ok) {
-                  showAlert({ title: 'Paylaşılamadı', message: res.reason });
+                  showAlert({ title: t('chat.shareFail'), message: res.reason });
                   return;
                 }
                 try {
                   await Share.share({
-                    message: `Mark Date: şu an bir buluşmadayım. Konumum bu linkte, yaklaşık 2 saat açık:\n${res.url}`,
+                    message: t('chat.safeShareBody', { url: res.url }),
                   });
                 } catch {
                   await Clipboard.setStringAsync(res.url);
                   showAlert({
-                    title: 'Link kopyalandı',
-                    message: 'Güvendiğin kişiye yapıştır.',
+                    title: t('chat.copiedTitle'),
+                    message: t('chat.copiedBody'),
                   });
                 }
               }}
             >
               <Text style={styles.safetyText}>
-                {spot.me.safeShare ? 'Konum açık' : 'Güvenli konum'}
+                {spot.me.safeShare ? t('chat.locOn') : t('chat.safeLoc')}
               </Text>
             </Pressable>
             {spot.me.safeShare ? (
@@ -285,7 +291,7 @@ export function ChatScreen({ chatId, onBack, onOpenProfile }: Props) {
                 style={styles.safetyChip}
                 onPress={() => void spot.stopSafeShare(chat.id)}
               >
-                <Text style={styles.safetyText}>Kapat</Text>
+                <Text style={styles.safetyText}>{t('common.close')}</Text>
               </Pressable>
             ) : null}
             {other ? (
@@ -300,10 +306,12 @@ export function ChatScreen({ chatId, onBack, onOpenProfile }: Props) {
               style={styles.safetyChip}
               onPress={() => {
                 showAlert({
-                  title: 'Engelle',
-                  message: `${other?.name || 'Bu kişi'} ile sohbet kapanır, mark’ları görünmez.`,
-                  confirmText: 'Engelle',
-                  cancelText: 'Vazgeç',
+                  title: t('chat.block'),
+                  message: t('chat.blockBody', {
+                    name: other?.name || t('chat.thisPerson'),
+                  }),
+                  confirmText: t('chat.block'),
+                  cancelText: t('common.cancel'),
                   type: 'danger',
                   onConfirm: () => {
                     void (async () => {
@@ -314,23 +322,23 @@ export function ChatScreen({ chatId, onBack, onOpenProfile }: Props) {
                 });
               }}
             >
-              <Text style={styles.safetyText}>Engelle</Text>
+              <Text style={styles.safetyText}>{t('chat.block')}</Text>
             </Pressable>
             <Pressable
               style={styles.safetyChip}
               onPress={() => {
                 showAlert({
-                  title: 'Şikayet et',
-                  message: 'Ekip bakacak. Bu kişiyle konuşmaya devam edebilirsin.',
-                  confirmText: 'Gönder',
-                  cancelText: 'Vazgeç',
+                  title: t('chat.reportTitle'),
+                  message: t('chat.reportBody'),
+                  confirmText: t('common.send'),
+                  cancelText: t('common.cancel'),
                   onConfirm: () => {
                     void (async () => {
                       const res = await spot.reportUser(otherId, 'rahatsiz', chat.pinId);
                       if (res.ok) {
                         showAlert({
-                          title: 'Şikayet alındı',
-                          message: 'İstersen kişiyi de engelleyebilirsin.',
+                          title: t('chat.reportedTitle'),
+                          message: t('chat.reportedBody'),
                         });
                       }
                     })();
@@ -338,16 +346,18 @@ export function ChatScreen({ chatId, onBack, onOpenProfile }: Props) {
                 });
               }}
             >
-              <Text style={styles.safetyText}>Şikayet</Text>
+              <Text style={styles.safetyText}>{t('chat.report')}</Text>
             </Pressable>
             <Pressable
               style={styles.safetyChip}
               onPress={() => {
                 showAlert({
-                  title: 'Sohbeti sil',
-                  message: `${other?.name || 'Bu kişi'} listeden kalkar. Karşı taraf hâlâ görür.`,
-                  confirmText: 'Sil',
-                  cancelText: 'Vazgeç',
+                  title: t('chats.deleteTitle'),
+                  message: t('chat.deleteBody', {
+                    name: other?.name || t('chat.thisPerson'),
+                  }),
+                  confirmText: t('common.delete'),
+                  cancelText: t('common.cancel'),
                   type: 'danger',
                   onConfirm: () => {
                     void (async () => {
@@ -358,7 +368,7 @@ export function ChatScreen({ chatId, onBack, onOpenProfile }: Props) {
                 });
               }}
             >
-              <Text style={[styles.safetyText, { color: '#FF8A9B' }]}>Sil</Text>
+              <Text style={[styles.safetyText, { color: '#FF8A9B' }]}>{t('common.delete')}</Text>
             </Pressable>
           </View>
         ) : null}
@@ -367,13 +377,13 @@ export function ChatScreen({ chatId, onBack, onOpenProfile }: Props) {
       <View style={[styles.body, { paddingBottom: kbHeight }]}>
           {chat.needsCheckin ? (
             <View style={styles.checkin}>
-              <Text style={styles.checkinTitle}>Buluştunuz mu?</Text>
+              <Text style={styles.checkinTitle}>{t('chat.checkin')}</Text>
               <View style={styles.checkinRow}>
                 <Pressable style={styles.yes} onPress={() => void spot.checkin(chat.id, true)}>
-                  <Text style={styles.yesText}>Evet</Text>
+                  <Text style={styles.yesText}>{t('chat.yes')}</Text>
                 </Pressable>
                 <Pressable style={styles.no} onPress={() => void spot.checkin(chat.id, false)}>
-                  <Text style={styles.noText}>Hayır</Text>
+                  <Text style={styles.noText}>{t('chat.no')}</Text>
                 </Pressable>
               </View>
             </View>
@@ -386,7 +396,7 @@ export function ChatScreen({ chatId, onBack, onOpenProfile }: Props) {
             ListHeaderComponent={
               <View style={styles.infoBanner}>
                 <Text style={styles.infoBannerTxt}>
-                  Bu sohbet Mark süresince aktiftir. Güvenli buluşmalar dileriz.
+                  {t('chat.liveHint')}
                 </Text>
               </View>
             }
@@ -447,7 +457,7 @@ export function ChatScreen({ chatId, onBack, onOpenProfile }: Props) {
           <View style={[styles.composer, { paddingBottom: composerPad }]}>
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Ekle"
+              accessibilityLabel={t('chat.add')}
               style={styles.mediaBtn}
               onPress={attach}
             >
@@ -456,7 +466,7 @@ export function ChatScreen({ chatId, onBack, onOpenProfile }: Props) {
             <TextInput
               value={text}
               onChangeText={setText}
-              placeholder={sendingPhoto ? 'Fotoğraf gönderiliyor…' : 'Mesaj...'}
+              placeholder={sendingPhoto ? t('chat.sendingPhoto') : t('chat.placeholder')}
               placeholderTextColor="rgba(247, 240, 245, 0.42)"
               style={styles.input}
               onSubmitEditing={() => void send()}
@@ -471,7 +481,7 @@ export function ChatScreen({ chatId, onBack, onOpenProfile }: Props) {
               onPress={() => void send()}
               disabled={!canSend}
               accessibilityRole="button"
-              accessibilityLabel="Gönder"
+              accessibilityLabel={t('common.send')}
             >
               <Text style={styles.sendText}>➤</Text>
             </Pressable>

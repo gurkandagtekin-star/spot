@@ -17,6 +17,7 @@ import { useSpot } from '../store/SpotContext';
 import { radius, type ColorTokens } from '../theme';
 import { useTheme } from '../theme/ThemeContext';
 import { useThemedStyles } from '../theme/useThemedStyles';
+import { useTranslation } from 'react-i18next';
 import type { MapIntent, PinKind } from '../types';
 import {
   distanceMeters,
@@ -49,6 +50,7 @@ export function MapScreen({
   const ads = useAds();
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
+  const { t } = useTranslation();
   const [compose, setCompose] = useState(false);
   const [draft, setDraft] = useState<{ lat: number; lng: number } | null>(null);
   const [placeName, setPlaceName] = useState('');
@@ -103,7 +105,7 @@ export function MapScreen({
       }
     } else if (intent.type === 'compose') {
       if (!pro.isPro && spot.remainingPins <= 0) {
-        if (pro.adMarksLeft > 0) flash('Reklam izleyerek +1 mark açabilirsin.');
+        if (pro.adMarksLeft > 0) flash(t('map.watchAdHint'));
         else onOpenPro();
       } else {
         setSelectedId(null);
@@ -195,7 +197,10 @@ export function MapScreen({
       if (pin.authorId === spot.meId) continue;
       const meters = distanceMeters(spot.location, pin);
       flash(
-        `Yakında yeni mark: ${pin.placeName || pin.text} · ${formatDistance(meters)}`,
+        t('map.nearbyNew', {
+          name: pin.placeName || pin.text,
+          distance: formatDistance(meters),
+        }),
       );
       break;
     }
@@ -214,7 +219,7 @@ export function MapScreen({
           kind: p.kind,
           mine: p.authorId === spot.meId,
           coming: p.coming ?? 0,
-          meetLabel: p.kind === 'chat' ? 'Sohbet' : formatMeetAt(p.meetAt || p.createdAt),
+          meetLabel: p.kind === 'chat' ? t('map.chat') : formatMeetAt(p.meetAt || p.createdAt),
           featured: Boolean(p.featured),
           socialLeader: Boolean(
             p.anonymous && p.authorId !== spot.meId
@@ -223,7 +228,7 @@ export function MapScreen({
           ),
           authorName:
             p.anonymous && p.authorId !== spot.meId
-              ? 'Anonim'
+              ? t('common.anonymous')
               : author?.name || '?',
           photoUrl:
             p.anonymous && p.authorId !== spot.meId ? undefined : author?.photoUrl,
@@ -231,7 +236,7 @@ export function MapScreen({
           quotaLabel: p.capacity ? pinQuotaLabel(p) : undefined,
         };
       }),
-    [visible, spot.meId, spot.profiles, spot.profileById],
+    [visible, spot.meId, spot.profiles, spot.profileById, t],
   );
 
   const selected = spot.live.find((p) => p.id === selectedId) ?? null;
@@ -296,8 +301,8 @@ export function MapScreen({
       <View style={styles.top}>
         <View style={styles.topRow}>
           <View style={{ flex: 1, paddingRight: 8 }}>
-            <Text style={styles.hello}>Selam {spot.me.name}</Text>
-            <Text style={styles.brand}>Mark Date</Text>
+            <Text style={styles.hello}>{t('map.hello', { name: spot.me.name })}</Text>
+            <Text style={styles.brand}>{t('map.brand')}</Text>
           </View>
           <LiveClock />
         </View>
@@ -317,14 +322,14 @@ export function MapScreen({
       {helloCount > 0 && !compose && !selected ? (
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Gelen selamlar"
+          accessibilityLabel={t('map.incomingHellos')}
           style={styles.helloBanner}
           onPress={onOpenChats}
         >
           <Text style={styles.helloBannerText}>
             {helloCount === 1
-              ? 'Biri selam attı. Eşleşmeye bak.'
-              : `${helloCount} selam bekliyor. Eşleşmeye bak.`}
+              ? t('map.helloOne')
+              : t('map.helloMany', { count: helloCount })}
           </Text>
         </Pressable>
       ) : null}
@@ -332,18 +337,18 @@ export function MapScreen({
         <MapHint visible onDismiss={dismissHint} />
       ) : spot.live.length === 0 && !compose ? (
         <View style={styles.emptyCard} pointerEvents="none">
-          <Text style={styles.emptyTitle}>Yakınlarında aktif Mark bulunmuyor. İlk işareti sen koy!</Text>
-          <Text style={styles.emptyText}>Haritaya dokun, davetini bırak.</Text>
+          <Text style={styles.emptyTitle}>{t('map.emptyTitle')}</Text>
+          <Text style={styles.emptyText}>{t('map.emptyText')}</Text>
         </View>
       ) : visible.length === 0 && !compose && !selected ? (
         <View style={styles.emptyCard} pointerEvents="none">
-          <Text style={styles.emptyTitle}>Bu mesafede açık mark yok</Text>
+          <Text style={styles.emptyTitle}>{t('map.emptyRangeTitle')}</Text>
           <Text style={styles.emptyText}>
             {range === 'area'
               ? myArea
-                ? `${myArea} içinde canlı mark yok. Tümü veya daha geniş km dene.`
-                : 'Semt yaklaşık 2,5 km. Konumun netleşince mahalle adına göre daralır.'
-              : 'Yarıçapı büyüt veya Tümü’ne geç; uzak mark’lar gizleniyor.'}
+                ? t('map.emptyAreaNamed', { area: myArea })
+                : t('map.emptyArea')
+              : t('map.emptyWider')}
           </Text>
         </View>
       ) : !selected && !compose ? (
@@ -358,11 +363,11 @@ export function MapScreen({
       {selected || compose ? null : (
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel="Konumuma git"
+        accessibilityLabel={t('map.locate')}
         style={styles.locate}
         onPress={() => {
           if (!spot.hasGps) {
-            flash('Konum izni verilirse seni haritada gösteririz.');
+            flash(t('map.needGps'));
             return;
           }
           setLookAt(null);
@@ -380,11 +385,11 @@ export function MapScreen({
       {selected || compose ? null : (
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel="Mark koy"
+        accessibilityLabel={t('map.drop')}
         style={styles.fab}
         onPress={() => {
           if (!pro.isPro && spot.remainingPins <= 0) {
-            if (pro.adMarksLeft > 0) flash('Reklam izleyerek +1 mark açabilirsin.');
+            if (pro.adMarksLeft > 0) flash(t('map.watchAdHint'));
             else onOpenPro();
             return;
           }
@@ -410,25 +415,25 @@ export function MapScreen({
             flash(res.reason);
             return false;
           }
-          flash('+1 mark hakkı.');
+            flash(t('map.adGranted'));
           return true;
         }}
         onOpenPro={onOpenPro}
         placeName={placeName}
         onClose={() => setCompose(false)}
         onSubmit={async (text, kind: PinKind, meetAt: number, featured: boolean, photoDataUrl?: string, capacity?: 2 | 3 | 4, anonymous?: boolean) => {
-          if (!draft) return 'Önce haritada bir yer işaretle.';
+          if (!draft) return t('map.pickPlace');
           if (kind === 'chat' && !pro.isPro) {
             onOpenPro();
-            return 'Sohbet noktası Pro’ya özel.';
+            return t('map.chatPro');
           }
           if (!pro.isPro && featured) {
             onOpenPro();
-            return 'Öne çıkarma Pro’ya özel.';
+            return t('map.featurePro');
           }
           if (!pro.isPro && anonymous) {
             onOpenPro();
-            return 'Anonim paylaşım Pro’ya özel.';
+            return t('map.anonPro');
           }
           const res = await spot.dropPin(text, kind, draft, {
             meetAt,
@@ -442,10 +447,10 @@ export function MapScreen({
           setDraft(null);
           flash(
             kind === 'chat'
-              ? 'Sohbet noktası haritada.'
+              ? t('map.droppedChat')
               : pro.isPro
-                ? 'Mark haritada. 16 saat sonra silinir.'
-                : 'Mark haritada. 2 saat sonra silinir.',
+                ? t('map.droppedPro')
+                : t('map.droppedFree'),
           );
           void ads.showInterstitial();
           return null;
@@ -477,19 +482,19 @@ export function MapScreen({
             flash(res.reason);
             return res.reason;
           }
-          flash('İstek gönderildi. Onaylarsa sohbet açılır.');
+          flash(t('map.joinSent'));
           return null;
         }}
         onWithdraw={async () => {
           if (!myRequest) return;
           const res = await spot.withdrawRequest(myRequest.id);
-          flash(res.ok ? 'İstek geri çekildi.' : res.reason);
+          flash(res.ok ? t('map.requestWithdrawn') : res.reason);
         }}
         onDecide={async (id, accept) => {
           const { chatId, filled } = await spot.decideRequest(id, accept);
           if (filled) {
             setSelectedId(null);
-            flash('Kadro tamam. Mark haritadan kalktı, sohbet sizde.');
+            flash(t('map.rosterFull'));
           }
           if (chatId) {
             setSelectedId(null);
@@ -500,18 +505,18 @@ export function MapScreen({
           if (!selected) return;
           const res = await spot.closePin(selected.id);
           setSelectedId(null);
-          flash(res.ok ? 'Mark kapatıldı.' : res.reason);
+          flash(res.ok ? t('map.markClosed') : res.reason);
         }}
         onBlock={async () => {
           if (!selected) return;
           const res = await spot.blockUser(selected.authorId);
           setSelectedId(null);
-          flash(res.ok ? 'Kişi engellendi. Mark’ları senden gizlenir.' : res.reason);
+          flash(res.ok ? t('map.personBlocked') : res.reason);
         }}
         onReport={async (reason) => {
           if (!selected) return;
           const res = await spot.reportUser(selected.authorId, reason, selected.id);
-          flash(res.ok ? 'Şikayet alındı. Ekip bakacak.' : res.reason);
+          flash(res.ok ? t('profile.reported') : res.reason);
         }}
         onOpenProfile={(userId) => {
           if (!selected) return;

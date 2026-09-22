@@ -17,6 +17,7 @@ import { pickProfilePhoto } from '../media/pickPhoto';
 import { useSpot } from '../store/SpotContext';
 import type { Gender } from '../types';
 import { GENDER_OPTIONS, normalizeHandle, splitFullName } from '../utils';
+import { useTranslation } from 'react-i18next';
 
 const BG = '#0A0A0A';
 const MUTED = 'rgba(255,255,255,0.55)';
@@ -28,6 +29,7 @@ export function ProfileSetupScreen() {
   const insets = useSafeAreaInsets();
   const kbHeight = useKeyboardHeight();
   const spot = useSpot();
+  const { t } = useTranslation();
   const split = splitFullName(spot.me.name);
   const [step, setStep] = useState(0);
   const [alias, setAlias] = useState(
@@ -238,7 +240,7 @@ export function ProfileSetupScreen() {
                     style={[styles.genderBtn, on && styles.genderOn]}
                   >
                     <Text style={[styles.genderText, on && styles.genderTextOn]}>
-                      {opt.label}
+                      {t(opt.labelKey)}
                     </Text>
                   </Pressable>
                 );

@@ -1,11 +1,13 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useAndroidBack } from '../hooks/useAndroidBack';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { PRO_FEATURES, PRO_PLANS } from '../data/pro';
-import { IAP_ENABLED } from '../iap';
+import { PRO_FEATURES } from '../data/pro';
+import { IAP_ENABLED, type ProPlanId } from '../iap';
+import { useIap } from '../iap/IapProvider';
 import { useSpot } from '../store/SpotContext';
 import { radius, type ColorTokens } from '../theme';
 import { useThemedStyles } from '../theme/useThemedStyles';
+import { useTranslation } from 'react-i18next';
 
 type Props = {
   onBack: () => void;
@@ -13,97 +15,139 @@ type Props = {
 
 export function ProScreen({ onBack }: Props) {
   const spot = useSpot();
+  const iap = useIap();
   const styles = useThemedStyles(createStyles);
+  const { t } = useTranslation();
   useAndroidBack(
     useCallback(() => {
       onBack();
       return true;
     }, [onBack]),
   );
-  const [planId, setPlanId] = useState<(typeof PRO_PLANS)[number]['id']>('yearly');
+  const [planId, setPlanId] = useState<ProPlanId>('yearly');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const active = Boolean(spot.me.isPro);
+  const active = Boolean(spot.me.isPro) || iap.hasPro;
+  const plans = iap.plans;
+  const selected = plans.find((p) => p.id === planId) || plans[0] || null;
+  const canBuy = IAP_ENABLED && Boolean(selected) && !iap.loading;
+
+  useEffect(() => {
+    void iap.refresh();
+  }, []);
+
+  useEffect(() => {
+    if (selected && selected.id !== planId) setPlanId(selected.id);
+  }, [selected, planId]);
 
   return (
     <ScrollView style={styles.page} contentContainerStyle={styles.content}>
-      <Pressable accessibilityRole="button" accessibilityLabel="Geri" onPress={onBack}>
-        <Text style={styles.back}>← Geri</Text>
+      <Pressable accessibilityRole="button" accessibilityLabel={t('pro.back')} onPress={onBack}>
+        <Text style={styles.back}>← {t('pro.back')}</Text>
       </Pressable>
-      <Text style={styles.kicker}>Mark Date Pro</Text>
-      <Text style={styles.title}>Daha çok çık, daha görünür ol</Text>
-      <Text style={styles.lead}>
-        Ücretsiz hesapta günde 2 mark, reklamla +2. Pro: 12 mark, 16 saat,
-        Semt/Tümü, sohbet noktası ve reklamsız harita.
-      </Text>
+      <Text style={styles.kicker}>{t('pro.kicker')}</Text>
+      <Text style={styles.title}>{t('pro.title')}</Text>
+      <Text style={styles.lead}>{t('pro.lead')}</Text>
 
       {active ? (
         <View style={styles.activeCard}>
-          <Text style={styles.activeTitle}>Pro açık</Text>
-          <Text style={styles.activeText}>
-            Sınırsız değil: günde 12 mark, 16 saat haritada, Semt/Tümü ve
-            reklamsız deneyim bu hesapta açık.
-          </Text>
+          <Text style={styles.activeTitle}>{t('pro.activeTitle')}</Text>
+          <Text style={styles.activeText}>{t('pro.activeText')}</Text>
         </View>
       ) : (
         <View style={styles.plans}>
-          {PRO_PLANS.map((plan) => {
-            const on = plan.id === planId;
+          {iap.loading && !plans.length ? (
+            <Text style={styles.planNote}>{t('pro.priceLoading')}</Text>
+          ) : null}
+          {plans.map((plan) => {
+            const on = plan.id === (selected?.id || planId);
             return (
               <Pressable
-                key={plan.id}
+                key={plan.productId}
                 onPress={() => setPlanId(plan.id)}
                 style={[styles.plan, on && styles.planOn]}
               >
-                <Text style={styles.planName}>{plan.name}</Text>
+                <Text style={styles.planName}>
+                  {t(plan.id === 'monthly' ? 'pro.monthly' : 'pro.yearly')}
+                </Text>
                 <Text style={styles.planPrice}>{plan.price}</Text>
                 <Text style={styles.planNote}>
-                  / {plan.period} · {plan.note}
+                  / {t(plan.id === 'monthly' ? 'pro.perMonth' : 'pro.perYear')} ·{' '}
+                  {t(plan.id === 'monthly' ? 'pro.cancelAnytime' : 'pro.twoMonths')}
                 </Text>
               </Pressable>
             );
           })}
+          {!iap.loading && !plans.length ? (
+            <Text style={styles.planNote}>{t('pro.priceUnavailable')}</Text>
+          ) : null}
         </View>
       )}
 
-      <Text style={styles.section}>Neler var</Text>
-      {PRO_FEATURES.map((item) => (
-        <View key={item.title} style={styles.feat}>
-          <Text style={styles.featTitle}>{item.title}</Text>
-          <Text style={styles.featText}>{item.text}</Text>
-        </View>
-      ))}
+      <Text style={styles.section}>{t('pro.section')}</Text>
+      {PRO_FEATURES.map((feat, i) => {
+        const n = i + 1;
+        return (
+          <View key={feat.key} style={styles.feat}>
+            <Text style={styles.featTitle}>{t(`pro.f${n}t`)}</Text>
+            <Text style={styles.featText}>{t(`pro.f${n}d`)}</Text>
+          </View>
+        );
+      })}
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
-      {active ? null : IAP_ENABLED ? (
+      {active ? null : IAP_ENABLED && iap.loading && !selected ? (
+        <View style={styles.cta}>
+          <Text style={styles.ctaText}>{t('pro.priceLoading')}</Text>
+        </View>
+      ) : active ? null : canBuy ? (
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Pro satın al"
+          accessibilityLabel={t('pro.buyA11y')}
           style={styles.cta}
           disabled={busy}
           onPress={async () => {
+            if (!selected) return;
             setBusy(true);
             setError(null);
-            const res = await spot.activatePro(planId);
+            const res = await iap.purchase(selected.id);
             setBusy(false);
-            if (!res.ok) setError(res.reason);
+            if (!res.ok && !res.cancelled) {
+              setError(res.reason === 'empty' ? t('pro.priceUnavailable') : res.reason);
+            }
           }}
         >
           <Text style={styles.ctaText}>
-            {busy ? 'İşleniyor…' : 'Satın al'}
+            {busy ? t('pro.buying') : `${t('pro.buy')} · ${selected.price}`}
           </Text>
         </Pressable>
       ) : (
         <View style={styles.cta}>
-          <Text style={styles.ctaText}>Google Play ödemesi yakında</Text>
+          <Text style={styles.ctaText}>
+            {IAP_ENABLED ? t('pro.priceUnavailable') : t('pro.soon')}
+          </Text>
         </View>
       )}
+      {active || !IAP_ENABLED ? null : (
+        <Pressable
+          accessibilityRole="button"
+          onPress={async () => {
+            setBusy(true);
+            setError(null);
+            const res = await iap.restore();
+            setBusy(false);
+            if (!res.ok) setError(res.reason);
+          }}
+          style={styles.restore}
+          disabled={busy}
+        >
+          <Text style={styles.restoreText}>{t('pro.restore')}</Text>
+        </Pressable>
+      )}
       <Text style={styles.fine}>
-        {IAP_ENABLED
-          ? 'Ödeme App Store / Google Play üzerinden alınır.'
-          : 'Satın alma henüz bağlı değil. Özellikler Pro açılınca devreye girer. Sahte tahsilat yok.'}
+        {IAP_ENABLED ? t('pro.fineOn') : t('pro.fineOff')}
       </Text>
     </ScrollView>
   );
@@ -160,6 +204,8 @@ const createStyles = (colors: ColorTokens) =>
     alignItems: 'center',
   },
   ctaText: { color: '#fff', fontWeight: '800', fontSize: 16 },
+  restore: { marginTop: 10, alignItems: 'center', paddingVertical: 8 },
+  restoreText: { color: colors.coral, fontWeight: '700' },
   fine: {
     marginTop: 12,
     color: colors.muted,

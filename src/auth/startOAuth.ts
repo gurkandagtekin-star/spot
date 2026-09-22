@@ -3,6 +3,7 @@ import { Platform } from 'react-native';
 import * as AuthSession from 'expo-auth-session';
 import * as WebBrowser from 'expo-web-browser';
 import { api, getApiUrl } from '../api';
+import { failCatch, localError } from '../i18n/errors';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -48,8 +49,8 @@ function appReturnUri() {
 }
 
 async function startWebGoogleSignIn(): Promise<OAuthResult | void> {
-  if (!WEB_CLIENT_ID) return { error: 'Google ayarlı değil.' };
-  if (typeof window === 'undefined') return { error: 'Google penceresi açılamadı.' };
+  if (!WEB_CLIENT_ID) return { error: localError('Google ayarlı değil.') };
+  if (typeof window === 'undefined') return { error: localError('Google penceresi açılamadı.') };
   const url = `${getApiUrl()}/auth/google/start?redirect=${encodeURIComponent(
     window.location.origin,
   )}`;
@@ -58,7 +59,7 @@ async function startWebGoogleSignIn(): Promise<OAuthResult | void> {
 }
 
 async function startBrowserGoogleSignIn(): Promise<OAuthResult> {
-  if (!WEB_CLIENT_ID) return { error: 'Google ayarlı değil.' };
+  if (!WEB_CLIENT_ID) return { error: localError('Google ayarlı değil.') };
   const proxy = expoProxyRedirectUri();
   const returnUrl = appReturnUri();
   const request = new AuthSession.AuthRequest({
@@ -83,7 +84,7 @@ async function startBrowserGoogleSignIn(): Promise<OAuthResult> {
       if (result.type === 'cancel' || result.type === 'dismiss') {
         return { cancelled: true };
       }
-      return { error: 'Giriş tamamlanamadı.' };
+      return { error: localError('Giriş tamamlanamadı.') };
     }
     const parsed = request.parseReturnUrl(result.url);
     const idToken =
@@ -91,7 +92,7 @@ async function startBrowserGoogleSignIn(): Promise<OAuthResult> {
     const code =
       parsed.type === 'success' ? String(parsed.params.code || '').trim() : '';
     if (!idToken && !code) {
-      return { error: 'Giriş tamamlandı ama oturum anahtarı gelmedi.' };
+      return { error: localError('Giriş tamamlandı ama oturum anahtarı gelmedi.') };
     }
     const { token } = await api.googleNative({
       idToken: idToken || undefined,
@@ -102,7 +103,7 @@ async function startBrowserGoogleSignIn(): Promise<OAuthResult> {
     return { token };
   } catch (err) {
     return {
-      error: err instanceof Error ? err.message : 'Google penceresi açılamadı.',
+      error: failCatch(err, 'Google penceresi açılamadı.'),
     };
   }
 }
@@ -113,7 +114,7 @@ function missingNativeModule(err: unknown) {
 }
 
 async function startNativeGoogleSignIn(): Promise<OAuthResult> {
-  if (!WEB_CLIENT_ID) return { error: 'Google ayarlı değil.' };
+  if (!WEB_CLIENT_ID) return { error: localError('Google ayarlı değil.') };
   const {
     GoogleSignin,
     isErrorWithCode,
@@ -140,7 +141,7 @@ async function startNativeGoogleSignIn(): Promise<OAuthResult> {
     idToken = String(tokens.idToken || '').trim();
   }
   if (!idToken) {
-    return { error: 'Giriş tamamlandı ama oturum anahtarı gelmedi.' };
+    return { error: localError('Giriş tamamlandı ama oturum anahtarı gelmedi.') };
   }
   const { token } = await api.googleNative({ idToken });
   return { token };
@@ -163,16 +164,16 @@ export async function startGoogleSignIn(): Promise<OAuthResult | void> {
         return { cancelled: true };
       }
       if (isErrorWithCode(err) && err.code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) {
-        return { error: 'Google Play Hizmetleri yok veya güncel değil.' };
+        return { error: localError('Google Play Hizmetleri yok veya güncel değil.') };
       }
       if (isErrorWithCode(err) && err.code === statusCodes.IN_PROGRESS) {
-        return { error: 'Google girişi zaten sürüyor.' };
+        return { error: localError('Google girişi zaten sürüyor.') };
       }
     } catch {
       return startBrowserGoogleSignIn();
     }
     return {
-      error: err instanceof Error ? err.message : 'Google girişi başarısız.',
+      error: failCatch(err, 'Google girişi başarısız.'),
     };
   }
 }
@@ -181,7 +182,7 @@ export async function startOAuth(
   provider: 'google' | 'instagram' = 'google',
 ): Promise<OAuthResult | void> {
   if (provider !== 'google') {
-    return { error: 'Instagram bağlantısı kaldırıldı.' };
+    return { error: localError('Instagram bağlantısı kaldırıldı.') };
   }
   return startGoogleSignIn();
 }

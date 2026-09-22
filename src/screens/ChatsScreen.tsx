@@ -6,6 +6,7 @@ import { useSpot } from '../store/SpotContext';
 import { radius, type ColorTokens } from '../theme';
 import { useThemedStyles } from '../theme/useThemedStyles';
 import { formatAgo, remainingLabel, atHandle } from '../utils';
+import { useTranslation } from 'react-i18next';
 
 type Props = {
   onOpenChat: (chatId: string) => void;
@@ -16,6 +17,7 @@ export function ChatsScreen({ onOpenChat, onOpenMap }: Props) {
   const spot = useSpot();
   const { showAlert } = useAlert();
   const styles = useThemedStyles(createStyles);
+  const { t } = useTranslation();
   const incoming = spot.requests.filter((r) => {
     const pin = spot.pins.find((p) => p.id === r.pinId);
     return pin?.authorId === spot.meId && r.status === 'pending';
@@ -31,10 +33,10 @@ export function ChatsScreen({ onOpenChat, onOpenMap }: Props) {
 
   const confirmHide = (chatId: string, name: string) => {
     showAlert({
-      title: 'Sohbeti sil',
-      message: `${name} ile sohbet listeden kalkar.`,
-      confirmText: 'Sil',
-      cancelText: 'Vazgeç',
+      title: t('chats.deleteTitle'),
+      message: t('chats.deleteBody', { name }),
+      confirmText: t('common.delete'),
+      cancelText: t('common.cancel'),
       type: 'danger',
       onConfirm: () => {
         void spot.hideChat(chatId);
@@ -49,14 +51,14 @@ export function ChatsScreen({ onOpenChat, onOpenMap }: Props) {
       showsVerticalScrollIndicator={false}
     >
       <View style={styles.head}>
-        <Text style={styles.title}>Eşleşme</Text>
-        <Text style={styles.lead}>Selam onaylanınca sohbet açılır.</Text>
+        <Text style={styles.title}>{t('chats.title')}</Text>
+        <Text style={styles.lead}>{t('chats.lead')}</Text>
       </View>
       <AdBanner />
 
       <View style={styles.block}>
         <View style={styles.blockHead}>
-          <Text style={styles.blockTitle}>Selam istekleri</Text>
+          <Text style={styles.blockTitle}>{t('chats.requests')}</Text>
           {incoming.length ? (
             <View style={styles.badge}>
               <Text style={styles.badgeTxt}>{incoming.length}</Text>
@@ -64,7 +66,7 @@ export function ChatsScreen({ onOpenChat, onOpenMap }: Props) {
           ) : null}
         </View>
         {incoming.length === 0 ? (
-          <Text style={styles.quietLine}>Bekleyen selam yok.</Text>
+          <Text style={styles.quietLine}>{t('chats.noneIncoming')}</Text>
         ) : (
           incoming.map((request) => {
             const from = spot.profileById(request.fromId);
@@ -78,30 +80,30 @@ export function ChatsScreen({ onOpenChat, onOpenMap }: Props) {
                     {from.name}
                   </Text>
                   <Text style={styles.preview} numberOfLines={1}>
-                    {atHandle(from) ? atHandle(from) : 'Selam attı'}
+                    {atHandle(from) ? atHandle(from) : t('chats.saidHi')}
                     {pin.placeName ? ` · ${pin.placeName}` : ''}
                   </Text>
                   <View style={styles.requestActs}>
                     <Pressable
                       accessibilityRole="button"
-                      accessibilityLabel="Reddet"
+                      accessibilityLabel={t('chats.decline')}
                       style={styles.passBtn}
                       onPress={() => {
                         void spot.decideRequest(request.id, false);
                       }}
                     >
-                      <Text style={styles.passTxt}>Geç</Text>
+                      <Text style={styles.passTxt}>{t('chats.pass')}</Text>
                     </Pressable>
                     <Pressable
                       accessibilityRole="button"
-                      accessibilityLabel="Eşleş"
+                      accessibilityLabel={t('chats.match')}
                       style={styles.matchBtn}
                       onPress={async () => {
                         const { chatId } = await spot.decideRequest(request.id, true);
                         if (chatId) onOpenChat(chatId);
                       }}
                     >
-                      <Text style={styles.matchTxt}>Eşleş</Text>
+                      <Text style={styles.matchTxt}>{t('chats.match')}</Text>
                     </Pressable>
                   </View>
                 </View>
@@ -114,19 +116,19 @@ export function ChatsScreen({ onOpenChat, onOpenMap }: Props) {
       {outgoing.length > 0 ? (
         <View style={styles.block}>
           <View style={styles.blockHead}>
-            <Text style={styles.blockTitle}>Gönderdiklerin</Text>
+            <Text style={styles.blockTitle}>{t('chats.outgoing')}</Text>
           </View>
           {outgoing.map((request) => {
             const pin = spot.pins.find((p) => p.id === request.pinId);
             const author = pin ? spot.profileById(pin.authorId) : undefined;
             const hidden = Boolean(pin?.anonymous);
-            const who = hidden ? 'Anonim' : author?.name || 'M';
+            const who = hidden ? t('common.anonymous') : author?.name || 'M';
             return (
               <View key={request.id} style={styles.dmRow}>
                 <Avatar name={who} uri={hidden ? undefined : author?.photoUrl} size={52} />
                 <View style={{ flex: 1, minWidth: 0 }}>
                   <Text style={styles.name} numberOfLines={1}>
-                    {hidden ? 'Anonim' : author?.name ?? 'Mark'}
+                    {hidden ? t('common.anonymous') : author?.name ?? t('common.mark')}
                   </Text>
                   <Text style={styles.preview} numberOfLines={1}>
                     {pin?.text}
@@ -134,13 +136,13 @@ export function ChatsScreen({ onOpenChat, onOpenMap }: Props) {
                 </View>
                 <Pressable
                   accessibilityRole="button"
-                  accessibilityLabel="İsteği geri çek"
+                  accessibilityLabel={t('chats.withdrawA11y')}
                   onPress={() => {
                     showAlert({
-                      title: 'İsteği geri çek',
-                      message: 'Karşı taraf artık bu selamı görmez.',
-                      confirmText: 'Geri çek',
-                      cancelText: 'Vazgeç',
+                      title: t('chats.withdrawTitle'),
+                      message: t('chats.withdrawBody'),
+                      confirmText: t('chats.withdraw'),
+                      cancelText: t('common.cancel'),
                       type: 'danger',
                       onConfirm: () => {
                         void spot.withdrawRequest(request.id);
@@ -148,7 +150,7 @@ export function ChatsScreen({ onOpenChat, onOpenMap }: Props) {
                     });
                   }}
                 >
-                  <Text style={styles.waitTag}>Bekliyor</Text>
+                  <Text style={styles.waitTag}>{t('chats.waiting')}</Text>
                 </Pressable>
               </View>
             );
@@ -158,7 +160,7 @@ export function ChatsScreen({ onOpenChat, onOpenMap }: Props) {
 
       <View style={styles.block}>
         <View style={styles.blockHead}>
-          <Text style={styles.blockTitle}>Sohbetler</Text>
+          <Text style={styles.blockTitle}>{t('chats.list')}</Text>
           {matches.length ? (
             <Text style={styles.countMuted}>{matches.length}</Text>
           ) : null}
@@ -166,16 +168,16 @@ export function ChatsScreen({ onOpenChat, onOpenMap }: Props) {
         {matches.length === 0 ? (
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Haritaya git"
+            accessibilityLabel={t('chats.goMap')}
             style={styles.emptyCard}
             onPress={onOpenMap}
           >
             <View style={styles.emptyPin}>
               <View style={styles.emptyDot} />
             </View>
-            <Text style={styles.emptyTitle}>Henüz bir eşleşmen yok</Text>
+            <Text style={styles.emptyTitle}>{t('chats.emptyTitle')}</Text>
             <Text style={styles.emptyText}>
-              Haritaya bir Mark bırakarak radara gir!
+              {t('chats.emptyText')}
             </Text>
           </Pressable>
         ) : (
@@ -188,14 +190,14 @@ export function ChatsScreen({ onOpenChat, onOpenMap }: Props) {
             const lastLabel = last
               ? last.fromId === 'system'
                 ? last.text
-                : `${lastMine ? 'Sen: ' : ''}${
+                : `${lastMine ? t('chats.youPrefix') : ''}${
                     last.imageUrl || /^data:image\//i.test(last.text)
-                      ? 'Fotoğraf'
+                      ? t('chats.photo')
                       : last.text
                   }`
-              : 'Sohbet açıldı';
+              : t('chats.opened');
             const unread = spot.isChatUnread(chat.id);
-            const name = other?.name ?? 'Sohbet';
+            const name = other?.name ?? t('nav.chats');
             return (
               <Pressable
                 key={chat.id}
@@ -222,7 +224,7 @@ export function ChatsScreen({ onOpenChat, onOpenMap }: Props) {
                     {lastLabel}
                   </Text>
                   <Text style={styles.foot} numberOfLines={1}>
-                    {pin?.placeName || 'Mark'}
+                    {pin?.placeName || t('common.mark')}
                     {' · '}
                     {remainingLabel(chat.closesAt || pin?.expiresAt || Date.now())}
                   </Text>
@@ -230,7 +232,7 @@ export function ChatsScreen({ onOpenChat, onOpenMap }: Props) {
                 {unread ? <View style={styles.unreadDot} /> : null}
                 <Pressable
                   accessibilityRole="button"
-                  accessibilityLabel="Sohbet menüsü"
+                  accessibilityLabel={t('chats.menu')}
                   hitSlop={10}
                   style={styles.moreHit}
                   onPress={() => confirmHide(chat.id, name)}

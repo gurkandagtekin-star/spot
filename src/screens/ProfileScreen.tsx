@@ -30,6 +30,9 @@ import { radius, type ColorTokens } from '../theme';
 import { useTheme } from '../theme/ThemeContext';
 import { useThemedStyles } from '../theme/useThemedStyles';
 import { useKeyboardHeight } from '../hooks/useKeyboard';
+import { useTranslation } from 'react-i18next';
+import { useLanguage } from '../i18n/I18nProvider';
+import i18n from '../i18n/i18n';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { Gender, PinKind, WallMark, WallPost } from '../types';
 import {
@@ -56,6 +59,7 @@ type Props = {
 export function ProfileScreen({ onOpenPro, userId, pinId, onBack, onShowOnMap }: Props) {
   const spot = useSpot();
   const { showAlert } = useAlert();
+  const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const { height: winH } = useWindowDimensions();
   const kbHeight = useKeyboardHeight();
@@ -100,7 +104,7 @@ export function ProfileScreen({ onOpenPro, userId, pinId, onBack, onShowOnMap }:
       live = false;
     };
   }, [wallUserId, tab]);
-  const name = person ? displayName(person) || 'Profil' : 'Profil';
+  const name = person ? displayName(person) || t('nav.profile') : t('nav.profile');
   const marks = useMemo(
     () => mergeMarks(spot, person?.id || spot.meId, isOwnProfile),
     [spot.live, spot.me.wallMarks, person?.id, person?.wallMarks, isOwnProfile, spot.meId],
@@ -133,33 +137,33 @@ export function ProfileScreen({ onOpenPro, userId, pinId, onBack, onShowOnMap }:
     return (
       <View style={styles.page}>
         <Pressable onPress={onBack} style={{ padding: 20 }}>
-          <Text style={styles.meta}>← Geri</Text>
+          <Text style={styles.meta}>← {t('common.back')}</Text>
         </Pressable>
-        <Text style={styles.meta}>Bu profil yok.</Text>
+        <Text style={styles.meta}>{t('profile.missing')}</Text>
       </View>
     );
   }
 
   const publicBlock = async () => {
     const res = await spot.blockUser(person.id);
-    flash(res.ok ? 'Engellendi.' : res.reason);
+    flash(res.ok ? t('profile.blocked') : res.reason);
     if (res.ok) onBack?.();
   };
 
   const publicReport = async () => {
     const res = await spot.reportUser(person.id, 'rahatsiz', pinId);
-    flash(res.ok ? 'Şikayet alındı. Ekip bakacak.' : res.reason);
+    flash(res.ok ? t('profile.reported') : res.reason);
   };
 
   const openSafety = () => {
     showAlert({
-      title: 'Güvenlik',
+      title: t('profile.safety'),
       message: name,
       type: 'danger',
       actions: [
-        { text: 'Vazgeç', style: 'cancel' },
-        { text: 'Şikayet et', onPress: () => void publicReport() },
-        { text: 'Engelle', style: 'destructive', onPress: () => void publicBlock() },
+        { text: t('common.cancel'), style: 'cancel' },
+        { text: t('profile.report'), onPress: () => void publicReport() },
+        { text: t('profile.block'), style: 'destructive', onPress: () => void publicBlock() },
       ],
     });
   };
@@ -202,7 +206,7 @@ export function ProfileScreen({ onOpenPro, userId, pinId, onBack, onShowOnMap }:
     } catch {
       /* mevcut liste kalsın */
     }
-    flash(res.ok ? 'Duvara düştü.' : res.reason);
+    flash(res.ok ? t('profile.wallPosted') : res.reason);
   };
 
   const onRefresh = async () => {
@@ -223,7 +227,7 @@ export function ProfileScreen({ onOpenPro, userId, pinId, onBack, onShowOnMap }:
     } catch {
       /* */
     }
-    flash(res.ok ? 'Not silindi.' : res.reason);
+    flash(res.ok ? t('profile.noteDeleted') : res.reason);
   };
 
   const dockedComposer = tab === 'notes' && chrome.composer;
@@ -260,18 +264,19 @@ export function ProfileScreen({ onOpenPro, userId, pinId, onBack, onShowOnMap }:
             {chrome.camera ? (
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel="Fotoğraf ekle"
+                accessibilityLabel={t('profile.add')}
                 style={styles.coverChip}
                 onPress={() =>
                   void changePhoto(
                     spot,
                     person.photos?.length || (person.photoUrl ? 1 : 0),
                     showAlert,
+                    t,
                   )
                 }
                 hitSlop={8}
               >
-                <Text style={styles.coverChipText}>Ekle +</Text>
+                <Text style={styles.coverChipText}>{t('profile.add')}</Text>
               </Pressable>
             ) : (
               <Pressable
@@ -281,24 +286,24 @@ export function ProfileScreen({ onOpenPro, userId, pinId, onBack, onShowOnMap }:
                 style={styles.coverChip}
                 hitSlop={8}
               >
-                <Text style={styles.coverChipText}>← Geri</Text>
+                <Text style={styles.coverChipText}>← {t('common.back')}</Text>
               </Pressable>
             )}
             {chrome.edit ? (
               <View style={styles.coverActions}>
                 <Pressable
                   accessibilityRole="button"
-                  accessibilityLabel="Profilini düzenle"
+                  accessibilityLabel={t('profile.editA11y')}
                   style={[styles.coverChip, { marginRight: 8 }]}
                   onPress={() => setEdit(true)}
                   hitSlop={8}
                 >
-                  <Text style={styles.coverChipText}>Düzenle</Text>
+                  <Text style={styles.coverChipText}>{t('profile.edit')}</Text>
                 </Pressable>
                 {chrome.menu ? (
                   <Pressable
                     accessibilityRole="button"
-                    accessibilityLabel="Ayarlar"
+                    accessibilityLabel={t('profile.settings')}
                     style={styles.coverMore}
                     onPress={() => setSettings(true)}
                     hitSlop={8}
@@ -314,7 +319,7 @@ export function ProfileScreen({ onOpenPro, userId, pinId, onBack, onShowOnMap }:
             ) : (
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel="Güvenlik"
+                accessibilityLabel={t('profile.safety')}
                 onPress={openSafety}
                 style={styles.coverChip}
                 hitSlop={8}
@@ -326,7 +331,7 @@ export function ProfileScreen({ onOpenPro, userId, pinId, onBack, onShowOnMap }:
           {isOwnProfile || vibeNote ? (
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel={isOwnProfile ? 'Vibe seç' : 'Vibe'}
+              accessibilityLabel={isOwnProfile ? t('profile.pickVibe') : t('profile.vibe')}
               hitSlop={10}
               style={styles.vibeBubble}
               onPress={() => {
@@ -363,17 +368,17 @@ export function ProfileScreen({ onOpenPro, userId, pinId, onBack, onShowOnMap }:
             <View style={styles.actionRow}>
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel={iFollow ? 'Takipten çık' : 'Takip Et'}
+                accessibilityLabel={iFollow ? t('profile.unfollow') : t('profile.follow')}
                 style={[styles.followChip, iFollow && styles.followChipOn]}
                 onPress={() => void toggleFollow()}
               >
                 <Text style={[styles.followChipTxt, iFollow && styles.followChipTxtOn]}>
-                  {iFollow ? 'Takip Ediliyor' : 'Takip Et'}
+                  {iFollow ? t('profile.following') : t('profile.follow')}
                 </Text>
               </Pressable>
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel="Selam Ver"
+                accessibilityLabel={t('profile.hello')}
                 style={[styles.helloChip, helloBusy && { opacity: 0.5 }]}
                 onPress={() => void openHello()}
               >
@@ -382,17 +387,17 @@ export function ProfileScreen({ onOpenPro, userId, pinId, onBack, onShowOnMap }:
                   <View style={styles.helloTail} />
                 </View>
                 <Text style={styles.helloTxt}>
-                  {helloBusy ? '…' : 'Selam Ver'}
+                  {helloBusy ? '…' : t('profile.hello')}
                 </Text>
               </Pressable>
             </View>
           ) : null}
           <View style={styles.statStrip}>
             {[
-              [String(markN), 'Mark'],
-              [String(meetN), 'Buluşma'],
-              [String(followerN), 'Takipçi'],
-              [String(followingN), 'Takip'],
+              [String(markN), t('profile.statMark')],
+              [String(meetN), t('profile.statMeet')],
+              [String(followerN), t('profile.statFollowers')],
+              [String(followingN), t('profile.statFollowing')],
               [String(badgeN), '★'],
             ].map(([n, label]) => (
               <View key={label} style={styles.statCell}>
@@ -411,15 +416,15 @@ export function ProfileScreen({ onOpenPro, userId, pinId, onBack, onShowOnMap }:
             socialLeader={person.socialLeader}
           />
           <Text style={styles.bioLine} numberOfLines={3}>
-            {bioLine || (isOwnProfile ? 'Düzenle’den kısa bir biyografi yaz.' : 'Biyografi yok.')}
+            {bioLine || (isOwnProfile ? t('profile.bioOwn') : t('profile.bioEmpty'))}
           </Text>
         </View>
 
         <View style={styles.feedTabs}>
           {(
             [
-              { id: 'notes' as const, label: 'Duvar', Icon: WallNotesIcon },
-              { id: 'places' as const, label: 'Lokasyonlar', Icon: WallPlaceIcon },
+              { id: 'notes' as const, label: t('profile.wall'), Icon: WallNotesIcon },
+              { id: 'places' as const, label: t('profile.places'), Icon: WallPlaceIcon },
             ]
           ).map((item) => {
             const on = tab === item.id;
@@ -511,7 +516,7 @@ export function ProfileScreen({ onOpenPro, userId, pinId, onBack, onShowOnMap }:
                         hitSlop={8}
                         onPress={() => void dropNote(item.id)}
                       >
-                        <Text style={styles.tweetDelete}>Sil</Text>
+                        <Text style={styles.tweetDelete}>{t('profile.deleteNote')}</Text>
                       </Pressable>
                     </View>
                   ) : null}
@@ -529,18 +534,18 @@ export function ProfileScreen({ onOpenPro, userId, pinId, onBack, onShowOnMap }:
             <TextInput
               value={draft}
               onChangeText={setDraft}
-              placeholder="Duvarına bir not yaz..."
+              placeholder={t('profile.wallPh')}
               placeholderTextColor="#8A8190"
               maxLength={280}
               style={styles.composerMini}
             />
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Paylaş"
+              accessibilityLabel={t('profile.share')}
               style={[styles.shareBtn, draft.trim().length < 2 && styles.solidOff]}
               onPress={() => void shareNote()}
             >
-              <Text style={styles.shareBtnTxt}>Paylaş</Text>
+              <Text style={styles.shareBtnTxt}>{t('profile.share')}</Text>
             </Pressable>
           </View>
         </View>
@@ -654,7 +659,8 @@ function mergeMarks(
 }
 
 function wallWhen(ts: number) {
-  return new Date(ts).toLocaleDateString('tr-TR', {
+  const locale = String(i18n.language || '').startsWith('tr') ? 'tr-TR' : 'en-US';
+  return new Date(ts).toLocaleDateString(locale, {
     day: 'numeric',
     month: 'short',
   });
@@ -664,21 +670,22 @@ async function changePhoto(
   spot: ReturnType<typeof useSpot>,
   currentCount: number,
   showAlert: (options: AlertOptions) => void,
+  t: (key: string) => string,
 ) {
   try {
     const slots = Math.max(0, 6 - currentCount);
     if (slots <= 0) {
-      showAlert({ title: 'Fotoğraf', message: 'En fazla 6 fotoğraf ekleyebilirsin.' });
+      showAlert({ title: t('common.photo'), message: t('profile.photoMax') });
       return;
     }
     const picked = await pickProfilePhotos(slots);
     if (!picked.length) return;
     const res = await spot.uploadPhotos(picked);
-    if (!res.ok) showAlert({ title: 'Fotoğraf', message: res.reason });
+    if (!res.ok) showAlert({ title: t('common.photo'), message: res.reason });
   } catch (err) {
     showAlert({
-      title: 'Fotoğraf',
-      message: err instanceof Error ? err.message : 'Fotoğraf seçilemedi.',
+      title: t('common.photo'),
+      message: err instanceof Error ? err.message : t('profile.photoPickFail'),
     });
   }
 }
@@ -686,17 +693,18 @@ async function changePhoto(
 function confirmDelete(
   spot: ReturnType<typeof useSpot>,
   showAlert: (options: AlertOptions) => void,
+  t: (key: string) => string,
 ) {
   showAlert({
-    title: 'Hesabı sil',
-    message: 'Mark’ların, sohbetlerin ve profilin silinir. Bu işlem geri alınmaz.',
-    confirmText: 'Hesabı sil',
-    cancelText: 'Vazgeç',
+    title: t('profile.deleteAccount'),
+    message: t('profile.deleteBody'),
+    confirmText: t('profile.deleteAccount'),
+    cancelText: t('common.cancel'),
     type: 'danger',
     onConfirm: () => {
       void (async () => {
         const res = await spot.deleteAccount();
-        if (!res.ok) showAlert({ title: 'Silinemedi', message: res.reason });
+        if (!res.ok) showAlert({ title: t('profile.deleteFail'), message: res.reason });
       })();
     },
   });
@@ -716,16 +724,28 @@ function SettingsSheet({
   const { showAlert } = useAlert();
   const { scheme, setScheme } = useTheme();
   const styles = useThemedStyles(createStyles);
+  const { t } = useTranslation();
+  const { language, setLanguage } = useLanguage();
 
   return (
     <DragSheet visible={visible} onClose={onClose} expanded>
-      <Text style={styles.sheetKicker}>Hesap</Text>
-      <Text style={styles.sheetTitle}>Ayarlar</Text>
-      <Accordion title="Görünüm">
+      <Text style={styles.sheetKicker}>{t('profile.kicker')}</Text>
+      <Text style={styles.sheetTitle}>{t('profile.settings')}</Text>
+      <Accordion title={t('profile.language')}>
         <FilterChips
           options={[
-            { id: 'light', label: 'Açık' },
-            { id: 'dark', label: 'Gece' },
+            { id: 'tr', label: t('profile.langTr') },
+            { id: 'en', label: t('profile.langEn') },
+          ]}
+          value={language}
+          onChange={setLanguage}
+        />
+      </Accordion>
+      <Accordion title={t('profile.appearance')}>
+        <FilterChips
+          options={[
+            { id: 'light', label: t('profile.light') },
+            { id: 'dark', label: t('profile.dark') },
           ]}
           value={scheme}
           onChange={setScheme}
@@ -734,12 +754,17 @@ function SettingsSheet({
       <Accordion
         title={
           pro.isPro
-            ? `Pro · ${pro.dailyPinLimit} mark/gün`
-            : `Bugün kalan hak: ${pro.remainingPins}/${pro.dailyPinLimit}`
+            ? t('profile.proQuota', { limit: pro.dailyPinLimit })
+            : t('profile.quotaLeft', {
+                left: pro.remainingPins,
+                limit: pro.dailyPinLimit,
+              })
         }
       >
         <Text style={styles.meta}>
-          {spot.me.email ? `Google: ${spot.me.email}` : 'Google bağlı'}
+          {spot.me.email
+            ? t('profile.googleEmail', { email: spot.me.email })
+            : t('profile.googleBound')}
         </Text>
         <Pressable
           accessibilityRole="button"
@@ -748,30 +773,25 @@ function SettingsSheet({
           onPress={onOpenPro}
         >
           <Text style={pro.isPro ? styles.ghostText : styles.proText}>
-            {pro.isPro ? 'Pro özellikler' : 'Pro’ya geç'}
+            {pro.isPro ? t('profile.proFeatures') : t('profile.goPro')}
           </Text>
         </Pressable>
       </Accordion>
-      <Accordion title="Gizlilik">
-        <Text style={styles.meta}>
-          Konumun yalnızca açık mark’ını haritada göstermek için kullanılır. Sohbet
-          çift onaydan sonra açılır.
-        </Text>
+      <Accordion title={t('profile.privacy')}>
+        <Text style={styles.meta}>{t('profile.privacyBody')}</Text>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Hesabı sil"
+          accessibilityLabel={t('profile.deleteAccount')}
           style={styles.danger}
-          onPress={() => confirmDelete(spot, showAlert)}
+          onPress={() => confirmDelete(spot, showAlert, t)}
         >
-          <Text style={styles.dangerText}>Hesabı sil</Text>
+          <Text style={styles.dangerText}>{t('profile.deleteAccount')}</Text>
         </Pressable>
       </Accordion>
-      <Accordion title="Engellenenler">
-        <Text style={styles.meta}>
-          Engeli kaldırırsan mark’ları tekrar görünür. Eski sohbet açılmaz.
-        </Text>
+      <Accordion title={t('profile.blockedPeople')}>
+        <Text style={styles.meta}>{t('profile.blockedHint')}</Text>
         {(spot.blocked || []).length === 0 ? (
-          <Text style={styles.meta}>Kimseyi engellemedin.</Text>
+          <Text style={styles.meta}>{t('profile.noneBlocked')}</Text>
         ) : (
           (spot.blocked || []).map((blocked) => (
             <View key={blocked.id} style={styles.blockRow}>
@@ -784,10 +804,10 @@ function SettingsSheet({
               </View>
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel={`${blocked.name} engelini kaldır`}
+                accessibilityLabel={t('profile.unblockA11y', { name: blocked.name })}
                 onPress={() => void spot.unblockUser(blocked.id)}
               >
-                <Text style={styles.unblock}>Kaldır</Text>
+                <Text style={styles.unblock}>{t('profile.unblock')}</Text>
               </Pressable>
             </View>
           ))
@@ -795,11 +815,11 @@ function SettingsSheet({
       </Accordion>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel="Çıkış yap"
+        accessibilityLabel={t('profile.signOut')}
         style={styles.signOut}
         onPress={() => void spot.signOut()}
       >
-        <Text style={styles.signOutText}>Çıkış yap</Text>
+        <Text style={styles.signOutText}>{t('profile.signOut')}</Text>
       </Pressable>
     </DragSheet>
   );
@@ -859,9 +879,9 @@ function VibeSheet({ visible, onClose }: { visible: boolean; onClose: () => void
 
   return (
     <DragSheet visible onClose={onClose}>
-      <Text style={styles.sheetKicker}>Profil</Text>
-      <Text style={styles.sheetTitle}>Vibe</Text>
-      <Text style={styles.meta}>Fotoğrafın üstündeki nota yazılır. En fazla 8 etiket.</Text>
+      <Text style={styles.sheetKicker}>{t('profile.vibeKicker')}</Text>
+      <Text style={styles.sheetTitle}>{t('profile.vibe')}</Text>
+      <Text style={styles.meta}>{t('profile.vibeHint')}</Text>
       <View style={styles.tagRow}>
         {VIBE_TAGS.map((tag) => {
           const on = picked.includes(tag.id);
@@ -869,12 +889,12 @@ function VibeSheet({ visible, onClose }: { visible: boolean; onClose: () => void
             <Pressable
               key={tag.id}
               accessibilityRole="button"
-              accessibilityLabel={tag.label}
+              accessibilityLabel={vibeLabel(tag.id)}
               accessibilityState={{ selected: on }}
               onPress={() => toggle(tag.id)}
               style={[styles.tag, on && styles.tagOn]}
             >
-              <Text style={[styles.tagText, on && styles.tagTextOn]}>{tag.label}</Text>
+              <Text style={[styles.tagText, on && styles.tagTextOn]}>{vibeLabel(tag.id)}</Text>
             </Pressable>
           );
         })}
@@ -887,6 +907,7 @@ function EditSheet({ visible, onClose }: { visible: boolean; onClose: () => void
   const spot = useSpot();
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
+  const { t } = useTranslation();
   const split = splitFullName(spot.me.name);
   const [firstName, setFirstName] = useState(spot.me.firstName || split.firstName);
   const [lastName, setLastName] = useState(spot.me.lastName || split.lastName);
@@ -961,19 +982,19 @@ function EditSheet({ visible, onClose }: { visible: boolean; onClose: () => void
 
   return (
     <DragSheet visible onClose={onClose} keyboard expanded>
-      <Text style={styles.sheetKicker}>Duvarı düzenle</Text>
-      <Text style={styles.sheetTitle}>Sokak kimliği</Text>
+      <Text style={styles.sheetKicker}>{t('profile.editKicker')}</Text>
+      <Text style={styles.sheetTitle}>{t('profile.streetId')}</Text>
       <View style={styles.twoCol}>
         <View style={{ flex: 1 }}>
-          <Text style={styles.label}>Ad</Text>
+          <Text style={styles.label}>{t('profile.firstName')}</Text>
           <TextInput value={firstName} onChangeText={setFirstName} style={styles.input} />
         </View>
         <View style={{ flex: 1 }}>
-          <Text style={styles.label}>Soyad</Text>
+          <Text style={styles.label}>{t('profile.lastName')}</Text>
           <TextInput value={lastName} onChangeText={setLastName} style={styles.input} />
         </View>
       </View>
-      <Text style={styles.label}>Doğum tarihi</Text>
+      <Text style={styles.label}>{t('profile.birth')}</Text>
       <View style={styles.dateRow}>
         <TextInput
           value={day}
@@ -1000,14 +1021,17 @@ function EditSheet({ visible, onClose }: { visible: boolean; onClose: () => void
           style={[styles.input, styles.dateYear]}
         />
       </View>
-      <Text style={styles.label}>Cinsiyet</Text>
+      <Text style={styles.label}>{t('profile.gender')}</Text>
       <FilterChips
         wrap
-        options={GENDER_OPTIONS}
+        options={GENDER_OPTIONS.map((opt) => ({
+          id: opt.id,
+          label: t(opt.labelKey),
+        }))}
         value={(gender || '__none__') as Gender}
         onChange={setGender}
       />
-      <Text style={styles.label}>Kullanıcı Adı</Text>
+      <Text style={styles.label}>{t('profile.username')}</Text>
       <View style={styles.handleRow}>
         <Text style={styles.at}>@</Text>
         <TextInput
@@ -1015,28 +1039,28 @@ function EditSheet({ visible, onClose }: { visible: boolean; onClose: () => void
           onChangeText={(v) => setHandle(v.replace(/^@/, '').toLowerCase())}
           autoCapitalize="none"
           autoCorrect={false}
-          placeholder="kullaniciadi"
+          placeholder={t('profile.usernamePh')}
           placeholderTextColor={colors.muted}
           style={[styles.input, { flex: 1, marginBottom: 0, borderWidth: 0 }]}
         />
       </View>
-      <Text style={styles.label}>Duvar notu</Text>
+      <Text style={styles.label}>{t('profile.wallNote')}</Text>
       <TextInput
         value={bio}
         onChangeText={setBio}
         multiline
-        placeholder="Gece 12’den sonra kahve / müzik."
+        placeholder={t('profile.wallNotePh')}
         placeholderTextColor={colors.muted}
         style={[styles.input, { minHeight: 80, textAlignVertical: 'top' }]}
       />
       {formError ? <Text style={styles.meta}>{formError}</Text> : null}
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel="Kaydet"
+        accessibilityLabel={t('common.save')}
         style={styles.cta}
         onPress={() => void save()}
       >
-        <Text style={styles.ctaText}>{saved ? 'Kaydedildi' : 'Kaydet'}</Text>
+        <Text style={styles.ctaText}>{saved ? t('common.saved') : t('common.save')}</Text>
       </Pressable>
     </DragSheet>
   );

@@ -30,11 +30,15 @@
       "channel": "production",
       "distribution": "store",
       "autoIncrement": true,
+      "environment": "production",
       "android": {
         "buildType": "app-bundle"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://mark-date-api.onrender.com"
+        "EXPO_PUBLIC_API_URL": "https://mark-date-api.onrender.com",
+        "EXPO_PUBLIC_RC_ENTITLEMENT": "pro",
+        "EXPO_PUBLIC_IAP_MONTHLY_ID": "markdate_pro_monthly",
+        "EXPO_PUBLIC_IAP_YEARLY_ID": "markdate_pro_yearly"
       }
     }
   },

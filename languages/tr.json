@@ -1,0 +1,12 @@
+{
+  "ios": {
+    "CFBundleDisplayName": "Mark Date",
+    "NSLocationWhenInUseUsageDescription": "Mark Date, yakındaki buluşmaları göstermek için konumunu kullanır.",
+    "NSPhotoLibraryUsageDescription": "Mark Date profil ve sohbet fotoğrafı için galeriye erişir.",
+    "NSCameraUsageDescription": "Mark Date sohbete fotoğraf eklemek için kamerayı kullanır.",
+    "NSFaceIDUsageDescription": "Mark Date, giriş anahtarını cihazda güvenle tutmak için Face ID kullanabilir."
+  },
+  "android": {
+    "app_name": "Mark Date"
+  }
+}

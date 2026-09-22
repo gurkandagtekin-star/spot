@@ -4,6 +4,7 @@ import { radius, type ColorTokens } from '../theme';
 import { useThemedStyles } from '../theme/useThemedStyles';
 import type { Pin, Profile } from '../types';
 import { distanceMeters, formatDistance, formatMeetAt, pinQuotaLabel } from '../utils';
+import { useTranslation } from 'react-i18next';
 
 type Row = {
   pin: Pin;
@@ -21,6 +22,7 @@ type Props = {
 
 export function NearbyList({ pins, meId, origin, profileById, onOpen }: Props) {
   const styles = useThemedStyles(createStyles);
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const rows: Row[] = [...pins]
     .map((pin) => ({
@@ -37,11 +39,11 @@ export function NearbyList({ pins, meId, origin, profileById, onOpen }: Props) {
     <View style={styles.wrap}>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel="Yakındaki marklar"
+        accessibilityLabel={t('map.nearbyA11y')}
         onPress={() => setOpen((v) => !v)}
         style={styles.header}
       >
-        <Text style={styles.title}>Yakında · {rows.length} açık mark</Text>
+        <Text style={styles.title}>{t('map.nearbyTitle', { count: rows.length })}</Text>
         <Text style={styles.chev}>{open ? '▾' : '▴'}</Text>
       </Pressable>
       {open ? (
@@ -62,7 +64,11 @@ export function NearbyList({ pins, meId, origin, profileById, onOpen }: Props) {
               >
                 <View style={{ flex: 1 }}>
                   <Text style={styles.name} numberOfLines={1}>
-                    {mine ? 'Sen' : pin.anonymous ? 'Anonim' : author?.name || 'Biri'}
+                    {mine
+                      ? t('common.you')
+                      : pin.anonymous
+                        ? t('common.anonymous')
+                        : author?.name || t('common.someone')}
                     {pin.kind !== 'chat' && pin.placeName ? ` · ${pin.placeName}` : ''}
                   </Text>
                   <Text style={styles.text} numberOfLines={1}>
@@ -72,7 +78,7 @@ export function NearbyList({ pins, meId, origin, profileById, onOpen }: Props) {
                 <View style={styles.metaCol}>
                   <Text style={styles.dist}>{formatDistance(meters)}</Text>
                   <Text style={styles.time}>
-                    {pin.kind === 'chat' ? 'Sohbet' : formatMeetAt(pin.meetAt)}
+                    {pin.kind === 'chat' ? t('map.chat') : formatMeetAt(pin.meetAt)}
                   </Text>
                   {pin.capacity ? (
                     <Text style={styles.time}>{pinQuotaLabel(pin)}</Text>

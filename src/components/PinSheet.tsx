@@ -7,6 +7,7 @@ import { radius, type ColorTokens } from '../theme';
 import { useThemedStyles } from '../theme/useThemedStyles';
 import type { JoinRequest, Pin, Profile } from '../types';
 import { formatMeetAt, genderLabel, atHandle, pinFilledCount, pinKindLabel, pinQuotaLabel, remainingLabel } from '../utils';
+import { useTranslation } from 'react-i18next';
 
 type Props = {
   visible: boolean;
@@ -47,21 +48,22 @@ export function PinSheet({
 }: Props) {
   const { showAlert } = useAlert();
   const styles = useThemedStyles(createStyles);
+  const { t } = useTranslation();
 
   if (!visible || !pin || !author) return null;
 
   const masked = Boolean(pin.anonymous) && !mine;
-  const shownName = masked ? 'Anonim' : author.name;
+  const shownName = masked ? t('common.anonymous') : author.name;
   const shownPhoto = masked ? undefined : author.photoUrl;
   const seatsFull = Boolean(pin.capacity && pinFilledCount(pin) >= pin.capacity);
   const joinLabel =
     myRequest?.status === 'pending'
-      ? 'Onay bekleniyor'
+      ? t('discover.waiting')
       : myRequest?.status === 'accepted'
-        ? 'Sohbet açık'
+        ? t('discover.chatOpen')
         : seatsFull
-          ? 'Kadro doldu'
-          : 'Selam gönder';
+          ? t('discover.fullCta')
+          : t('discover.sayHi');
 
   return (
     <DragSheet visible onClose={onClose}>
@@ -73,7 +75,7 @@ export function PinSheet({
             ) : null}
             <Text style={styles.meet}>
               {pin.kind === 'chat'
-                ? `Yalnızca mesaj · ${pinQuotaLabel(pin)}`
+                ? `${t('kind.chat')} · ${pinQuotaLabel(pin)}`
                 : `${formatMeetAt(pin.meetAt)} · ${pinQuotaLabel(pin)}`}
             </Text>
             {pin.photoUrl ? (
@@ -88,13 +90,15 @@ export function PinSheet({
             <Text style={styles.text}>{pin.text}</Text>
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel={masked ? 'Anonim profil' : `${shownName} duvarı`}
+              accessibilityLabel={
+                masked ? t('pin.anonProfile') : t('pin.wallA11y', { name: shownName })
+              }
               style={styles.card}
               onPress={() => {
                 if (masked) {
                   showAlert({
-                    title: 'Anonim mark',
-                    message: 'Bu mark anonim olarak oluşturulmuş. Profil duvarı gizli.',
+                    title: t('discover.anonTitle'),
+                    message: t('discover.anonBody'),
                   });
                   return;
                 }
@@ -105,7 +109,7 @@ export function PinSheet({
               <View style={{ flex: 1 }}>
                 <Text style={styles.name}>{shownName}</Text>
                 {mine && pin.anonymous ? (
-                  <Text style={styles.handleTxt}>Haritada Anonim görünüyorsun</Text>
+                  <Text style={styles.handleTxt}>{t('pin.anonOnMap')}</Text>
                 ) : null}
                 {!masked && (author.age || author.gender) ? (
                   <Text style={styles.handleTxt}>
@@ -121,15 +125,15 @@ export function PinSheet({
                   <BadgeRow badges={author.badges} socialLeader={author.socialLeader} />
                 ) : null}
                 {!masked ? (
-                  <Text style={styles.tags}>Duvarı gör →</Text>
+                  <Text style={styles.tags}>{t('pin.seeWall')}</Text>
                 ) : null}
               </View>
             </Pressable>
             {mine ? (
               <View style={{ gap: 10, marginTop: 8 }}>
-                <Text style={styles.section}>İstekler</Text>
+                <Text style={styles.section}>{t('pin.requests')}</Text>
                 {incoming.length === 0 ? (
-                  <Text style={styles.empty}>Henüz istek yok. Mark’ın hâlâ haritada.</Text>
+                  <Text style={styles.empty}>{t('pin.noRequests')}</Text>
                 ) : (
                   incoming.map(({ request, from }) => (
                     <View key={request.id} style={styles.req}>
@@ -137,27 +141,27 @@ export function PinSheet({
                         <Text style={styles.name}>{from.name}</Text>
                         <Text style={styles.handleTxt}>
                           {atHandle(from)
-                            ? `${atHandle(from)} merhaba dedi`
-                            : `${from.name} merhaba dedi`}
+                            ? t('pin.saidHiHandle', { handle: atHandle(from) })
+                            : t('pin.saidHiName', { name: from.name })}
                         </Text>
                       </View>
                       {request.status === 'pending' ? (
                         <>
                           <Pressable
                             accessibilityRole="button"
-                            accessibilityLabel="İsteği reddet"
+                            accessibilityLabel={t('pin.reject')}
                             style={styles.smallGhost}
                             onPress={() => onDecide(request.id, false)}
                           >
-                            <Text style={styles.smallGhostText}>Yok</Text>
+                            <Text style={styles.smallGhostText}>{t('pin.no')}</Text>
                           </Pressable>
                           <Pressable
                             accessibilityRole="button"
-                            accessibilityLabel="İsteği onayla"
+                            accessibilityLabel={t('pin.approve')}
                             style={styles.smallCta}
                             onPress={() => onDecide(request.id, true)}
                           >
-                            <Text style={styles.smallCtaText}>Onayla</Text>
+                            <Text style={styles.smallCtaText}>{t('pin.approveCta')}</Text>
                           </Pressable>
                         </>
                       ) : (
@@ -174,12 +178,12 @@ export function PinSheet({
                   style={styles.danger}
                   onPress={onClosePin}
                 >
-                  <Text style={styles.dangerText}>Markı Sil</Text>
+                  <Text style={styles.dangerText}>{t('pin.deleteMark')}</Text>
                 </Pressable>
               </View>
             ) : myRequest?.status === 'accepted' && onOpenChat ? (
               <Pressable style={styles.cta} onPress={onOpenChat}>
-                <Text style={styles.ctaText}>Sohbete git</Text>
+                <Text style={styles.ctaText}>{t('pin.goChat')}</Text>
               </Pressable>
             ) : myRequest?.status === 'pending' ? (
               <Pressable
@@ -188,7 +192,7 @@ export function PinSheet({
                 style={styles.danger}
                 onPress={() => onWithdraw?.()}
               >
-                <Text style={styles.dangerText}>İsteği geri çek</Text>
+                <Text style={styles.dangerText}>{t('pin.withdraw')}</Text>
               </Pressable>
             ) : (
               <Pressable
@@ -203,13 +207,13 @@ export function PinSheet({
             {!mine ? (
               <View style={styles.safety}>
                 <Pressable onPress={onBlock} style={styles.safetyBtn}>
-                  <Text style={styles.safetyText}>Engelle</Text>
+                  <Text style={styles.safetyText}>{t('pin.block')}</Text>
                 </Pressable>
                 <Pressable
                   onPress={() => onReport?.('rahatsiz')}
                   style={styles.safetyBtn}
                 >
-                  <Text style={styles.safetyText}>Şikayet et</Text>
+                  <Text style={styles.safetyText}>{t('pin.report')}</Text>
                 </Pressable>
               </View>
             ) : null}

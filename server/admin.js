@@ -1,3 +1,5 @@
+const { fail } = require('./i18n');
+
 function adminOk(req) {
   const key = process.env.ADMIN_KEY;
   if (!key) return false;
@@ -9,7 +11,7 @@ function adminOk(req) {
 
 function mountAdmin(app, { db, save }) {
   app.get('/admin/reports', (req, res) => {
-    if (!adminOk(req)) return res.status(404).json({ error: 'Yok.' });
+    if (!adminOk(req)) return res.status(404).json(fail(req, 'Yok.'));
     const rows = (db.reports || []).slice(0, 120);
     if (String(req.query.format) === 'json') {
       return res.json({ reports: rows });
@@ -51,9 +53,9 @@ function mountAdmin(app, { db, save }) {
   });
 
   app.post('/admin/reports/:id', (req, res) => {
-    if (!adminOk(req)) return res.status(404).json({ error: 'Yok.' });
+    if (!adminOk(req)) return res.status(404).json(fail(req, 'Yok.'));
     const report = (db.reports || []).find((r) => r.id === req.params.id);
-    if (!report) return res.status(404).json({ error: 'Kayıt yok.' });
+    if (!report) return res.status(404).json(fail(req, 'Kayıt yok.'));
     const status = String(req.body?.status || req.query.status || 'closed');
     report.status = status === 'open' ? 'open' : 'closed';
     save(db);

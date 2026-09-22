@@ -115,6 +115,16 @@ export function ProfileScreen({ onOpenPro, userId, pinId, onBack, onShowOnMap }:
   const followerN = person?.stats?.followers || 0;
   const followingN = person?.stats?.following || 0;
   const iFollow = Boolean(spot.me.followingIds?.includes(person?.id || ''));
+  const helloPending = Boolean(
+    person &&
+      spot.requests.some(
+        (r) =>
+          r.pinId === 'hello' &&
+          r.status === 'pending' &&
+          r.fromId === spot.meId &&
+          r.toId === person.id,
+      ),
+  );
   const vibeNote = vibeFrom(person);
   const places = useMemo(() => groupPlaces(marks), [marks]);
   const posts = feed;
@@ -183,6 +193,10 @@ export function ProfileScreen({ onOpenPro, userId, pinId, onBack, onShowOnMap }:
     setHelloBusy(false);
     if (!res.ok) {
       flash(res.reason);
+      return;
+    }
+    if (res.pending || !res.chatId) {
+      flash(t('profile.helloSent'));
       return;
     }
     onOpenChat?.(res.chatId);
@@ -387,7 +401,7 @@ export function ProfileScreen({ onOpenPro, userId, pinId, onBack, onShowOnMap }:
                   <View style={styles.helloTail} />
                 </View>
                 <Text style={styles.helloTxt}>
-                  {helloBusy ? '…' : t('profile.hello')}
+                  {helloBusy ? '…' : helloPending ? t('profile.helloWait') : t('profile.hello')}
                 </Text>
               </Pressable>
             </View>

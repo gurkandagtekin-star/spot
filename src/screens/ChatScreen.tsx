@@ -95,7 +95,9 @@ export function ChatScreen({ chatId, onBack, onOpenProfile }: Props) {
     }, [onBack, peek]),
   );
   const chat = spot.chats.find((c) => c.id === chatId);
-  const otherId = chat?.memberIds.find((id) => id !== spot.meId);
+  const others = (chat?.memberIds || []).filter((id) => id !== spot.meId);
+  const isGroup = others.length > 1;
+  const otherId = others[0];
   const other = otherId ? spot.profileById(otherId) : undefined;
   const pin = chat ? spot.pins.find((p) => p.id === chat.pinId) : undefined;
   const closes = chat?.closesAt || pin?.expiresAt;
@@ -147,6 +149,9 @@ export function ChatScreen({ chatId, onBack, onOpenProfile }: Props) {
     );
   }
 
+  const groupTitle =
+    pin?.placeName || t('chats.group', { count: chat.memberIds.length });
+  const title = isGroup ? groupTitle : other?.name ?? t('kind.chat');
   const canSend = Boolean(text.trim()) && !sendingPhoto;
   const active = Boolean(closes && closes > now);
   const place = pin?.kind === 'chat' ? null : pin?.placeName;
@@ -224,26 +229,28 @@ export function ChatScreen({ chatId, onBack, onOpenProfile }: Props) {
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={t('chat.profilePhoto')}
-            onPress={() => setPeek(true)}
+            onPress={() => {
+              if (!isGroup) setPeek(true);
+            }}
           >
-            <Avatar name={other?.name || 'S'} size={42} uri={other?.photoUrl} />
+            <Avatar name={title} uri={isGroup ? undefined : other?.photoUrl} size={42} />
           </Pressable>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={t('chat.openProfile')}
             onPress={() => {
-              if (otherId) onOpenProfile?.(otherId, pin?.id);
+              if (!isGroup && otherId) onOpenProfile?.(otherId, pin?.id);
             }}
             style={{ flex: 1 }}
           >
             <Text style={styles.name} numberOfLines={1}>
-              {other?.name ?? t('kind.chat')}
+              {title}
             </Text>
             <Text style={styles.note} numberOfLines={1}>
               {subtitle || t('chat.active')}
             </Text>
           </Pressable>
-          {otherId ? (
+          {otherId && !isGroup ? (
             <Pressable
               accessibilityRole="button"
               accessibilityLabel={t('common.menu')}
@@ -259,7 +266,7 @@ export function ChatScreen({ chatId, onBack, onOpenProfile }: Props) {
             </Pressable>
           ) : null}
         </View>
-        {otherId && safetyOpen ? (
+        {otherId && !isGroup && safetyOpen ? (
           <View style={styles.safety}>
             <Pressable
               style={styles.safetyChip}
@@ -445,6 +452,11 @@ export function ChatScreen({ chatId, onBack, onOpenProfile }: Props) {
               }
               return (
                 <View style={[styles.bubble, mine ? styles.mine : styles.theirs]}>
+                  {isGroup && !mine ? (
+                    <Text style={styles.fromName} numberOfLines={1}>
+                      {spot.profileById(m.fromId)?.name || t('common.someone')}
+                    </Text>
+                  ) : null}
                   {photo ? (
                     <Image source={{ uri: photo }} style={styles.photo} />
                   ) : null}
@@ -610,6 +622,12 @@ const styles = StyleSheet.create({
     paddingTop: 8,
     paddingBottom: 6,
     marginVertical: 3,
+  },
+  fromName: {
+    color: '#FFB8D6',
+    fontWeight: '800',
+    fontSize: 11,
+    marginBottom: 3,
   },
   theirs: {
     alignSelf: 'flex-start',

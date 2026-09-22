@@ -19,8 +19,10 @@ export function ChatsScreen({ onOpenChat, onOpenMap }: Props) {
   const styles = useThemedStyles(createStyles);
   const { t } = useTranslation();
   const incoming = spot.requests.filter((r) => {
+    if (r.status !== 'pending') return false;
+    if (r.pinId === 'hello') return r.toId === spot.meId;
     const pin = spot.pins.find((p) => p.id === r.pinId);
-    return pin?.authorId === spot.meId && r.status === 'pending';
+    return pin?.authorId === spot.meId;
   });
   const outgoing = spot.requests.filter(
     (r) => r.fromId === spot.meId && r.status === 'pending',
@@ -71,7 +73,8 @@ export function ChatsScreen({ onOpenChat, onOpenMap }: Props) {
           incoming.map((request) => {
             const from = spot.profileById(request.fromId);
             const pin = spot.pins.find((p) => p.id === request.pinId);
-            if (!from || !pin) return null;
+            if (!from) return null;
+            if (request.pinId !== 'hello' && !pin) return null;
             return (
               <View key={request.id} style={styles.requestRow}>
                 <Avatar name={from.name} uri={from.photoUrl} size={52} />
@@ -81,7 +84,7 @@ export function ChatsScreen({ onOpenChat, onOpenMap }: Props) {
                   </Text>
                   <Text style={styles.preview} numberOfLines={1}>
                     {atHandle(from) ? atHandle(from) : t('chats.saidHi')}
-                    {pin.placeName ? ` · ${pin.placeName}` : ''}
+                    {pin?.placeName ? ` · ${pin.placeName}` : ''}
                   </Text>
                   <View style={styles.requestActs}>
                     <Pressable
@@ -120,18 +123,23 @@ export function ChatsScreen({ onOpenChat, onOpenMap }: Props) {
           </View>
           {outgoing.map((request) => {
             const pin = spot.pins.find((p) => p.id === request.pinId);
-            const author = pin ? spot.profileById(pin.authorId) : undefined;
+            const target =
+              request.pinId === 'hello'
+                ? spot.profileById(request.toId || '')
+                : pin
+                  ? spot.profileById(pin.authorId)
+                  : undefined;
             const hidden = Boolean(pin?.anonymous);
-            const who = hidden ? t('common.anonymous') : author?.name || 'M';
+            const who = hidden ? t('common.anonymous') : target?.name || 'M';
             return (
               <View key={request.id} style={styles.dmRow}>
-                <Avatar name={who} uri={hidden ? undefined : author?.photoUrl} size={52} />
+                <Avatar name={who} uri={hidden ? undefined : target?.photoUrl} size={52} />
                 <View style={{ flex: 1, minWidth: 0 }}>
                   <Text style={styles.name} numberOfLines={1}>
-                    {hidden ? t('common.anonymous') : author?.name ?? t('common.mark')}
+                    {hidden ? t('common.anonymous') : target?.name ?? t('common.mark')}
                   </Text>
                   <Text style={styles.preview} numberOfLines={1}>
-                    {pin?.text}
+                    {pin?.text || t('chats.saidHi')}
                   </Text>
                 </View>
                 <Pressable
@@ -182,8 +190,9 @@ export function ChatsScreen({ onOpenChat, onOpenMap }: Props) {
           </Pressable>
         ) : (
           matches.map((chat) => {
-            const otherId = chat.memberIds.find((id) => id !== spot.meId);
-            const other = otherId ? spot.profileById(otherId) : undefined;
+            const others = chat.memberIds.filter((id) => id !== spot.meId);
+            const isGroup = others.length > 1;
+            const other = others[0] ? spot.profileById(others[0]) : undefined;
             const last = chat.messages[chat.messages.length - 1];
             const pin = spot.pins.find((p) => p.id === chat.pinId);
             const lastMine = last && last.fromId === spot.meId;
@@ -197,7 +206,9 @@ export function ChatsScreen({ onOpenChat, onOpenMap }: Props) {
                   }`
               : t('chats.opened');
             const unread = spot.isChatUnread(chat.id);
-            const name = other?.name ?? t('nav.chats');
+            const name = isGroup
+              ? pin?.placeName || t('chats.group', { count: chat.memberIds.length })
+              : other?.name ?? t('nav.chats');
             return (
               <Pressable
                 key={chat.id}

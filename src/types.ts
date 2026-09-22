@@ -118,6 +118,7 @@ export type JoinRequest = {
   id: string;
   pinId: string;
   fromId: string;
+  toId?: string;
   status: RequestStatus;
 };
 

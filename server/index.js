@@ -710,6 +710,10 @@ function snapshotFor(db, userId) {
       .filter((p) => p.authorId === userId || !hiddenPin(p.authorId))
       .map((p) => decoratePin(db, p, leaders)),
     requests: db.requests.filter((r) => {
+      if (r.pinId === 'hello') {
+        if (hiddenPin(r.fromId) || hiddenPin(r.toId)) return false;
+        return r.fromId === userId || r.toId === userId;
+      }
       const pin = db.pins.find((p) => p.id === r.pinId);
       if (!pin) return false;
       if (hiddenPin(r.fromId) || hiddenPin(pin.authorId)) return false;
@@ -720,8 +724,9 @@ function snapshotFor(db, userId) {
         if (!c.memberIds.includes(userId)) return false;
         if ((c.hiddenIds || []).includes(userId)) return false;
         if (c.closesAt && c.closesAt <= now()) return false;
-        const other = c.memberIds.find((id) => id !== userId);
-        return !other || !blockedPair(db, userId, other);
+        return !(c.memberIds || []).some(
+          (id) => id !== userId && blockedPair(db, userId, id),
+        );
       })
       .map((c) => decorateChat(db, c, userId)),
   };
@@ -1507,6 +1512,62 @@ app.post('/requests/:id/decide', auth, (req, res) => {
   if (!request || request.status !== 'pending') {
     return res.status(404).json(fail(req, 'İstek yok.'));
   }
+  if (request.pinId === 'hello') {
+    if (request.toId !== req.userId) {
+      return res.status(403).json(fail(req, 'Bu istek sana ait değil.'));
+    }
+    if (!accept) {
+      request.status = 'declined';
+      save(db);
+      emitAllRelated([req.userId, request.fromId]);
+      return res.json({ chatId: null, snapshot: snapshotFor(db, req.userId) });
+    }
+    const from = userById(db, request.fromId);
+    const host = userById(db, req.userId);
+    const t = now();
+    const existingChat = (db.chats || []).find(
+      (c) =>
+        c.pinId === 'dm' &&
+        (c.memberIds || []).includes(req.userId) &&
+        (c.memberIds || []).includes(request.fromId) &&
+        (!c.closesAt || c.closesAt > t),
+    );
+    let chatId = existingChat?.id || null;
+    if (existingChat) {
+      existingChat.hiddenIds = (existingChat.hiddenIds || []).filter(
+        (id) => id !== req.userId && id !== request.fromId,
+      );
+    } else {
+      const chat = {
+        id: uid('chat'),
+        pinId: 'dm',
+        memberIds: [req.userId, request.fromId],
+        closesAt: t + 48 * 60 * 60 * 1000,
+        messages: [
+          {
+            id: uid('msg'),
+            fromId: 'system',
+            text: `${from?.name || 'Biri'} ile eşleştiniz. Kısa konuşun, yüz yüze tanışın.`,
+            at: t,
+          },
+        ],
+      };
+      db.chats = db.chats || [];
+      db.chats.unshift(chat);
+      chatId = chat.id;
+    }
+    request.status = 'accepted';
+    save(db);
+    emitAllRelated([req.userId, request.fromId]);
+    emitNotice(request.fromId, {
+      id: uid('note'),
+      type: 'accepted',
+      title: `${host?.name || 'Biri'} onayladı`,
+      body: 'Sohbet açıldı. Kısa konuşun, yüz yüze tanışın.',
+      chatId,
+    });
+    return res.json({ chatId, snapshot: snapshotFor(db, req.userId) });
+  }
   const pin = db.pins.find((p) => p.id === request.pinId);
   if (!pin || pin.authorId !== req.userId) {
     return res.status(403).json(fail(req, 'Bu istek sana ait değil.'));
@@ -1528,14 +1589,24 @@ app.post('/requests/:id/decide', auth, (req, res) => {
   const from = userById(db, request.fromId);
   const host = userById(db, req.userId);
   const existingChat = db.chats.find(
-    (c) =>
-      c.pinId === pin.id &&
-      c.memberIds.includes(req.userId) &&
-      c.memberIds.includes(request.fromId) &&
-      (!c.closesAt || c.closesAt > now()),
+    (c) => c.pinId === pin.id && (!c.closesAt || c.closesAt > now()),
   );
   let chatId = existingChat?.id || null;
-  if (!existingChat) {
+  if (existingChat) {
+    if (!existingChat.memberIds.includes(request.fromId)) {
+      existingChat.memberIds.push(request.fromId);
+      existingChat.hiddenIds = (existingChat.hiddenIds || []).filter(
+        (id) => id !== request.fromId,
+      );
+      existingChat.messages.push({
+        id: uid('msg'),
+        fromId: 'system',
+        text: `${from?.name || 'Biri'} gruba katıldı.`,
+        at: now(),
+      });
+    }
+    chatId = existingChat.id;
+  } else {
     const extraChat = isProUser(from) || isProUser(host) ? PRO_CHAT_MS : 0;
     const chat = {
       id: uid('chat'),
@@ -1560,7 +1631,8 @@ app.post('/requests/:id/decide', auth, (req, res) => {
   if (filled) {
     db.users.forEach((u) => emitSnapshot(u.id));
   } else {
-    emitAllRelated([req.userId, request.fromId]);
+    const chat = db.chats.find((c) => c.id === chatId);
+    emitAllRelated(chat?.memberIds || [req.userId, request.fromId]);
   }
   emitNotice(request.fromId, {
     id: uid('note'),
@@ -1602,7 +1674,7 @@ app.delete('/requests/:id', auth, (req, res) => {
   const pin = db.pins.find((p) => p.id === request.pinId);
   db.requests = db.requests.filter((r) => r.id !== request.id);
   save(db);
-  emitAllRelated([req.userId, pin?.authorId].filter(Boolean));
+  emitAllRelated([req.userId, pin?.authorId || request.toId].filter(Boolean));
   res.json(snapshotFor(db, req.userId));
 });
 
@@ -1984,46 +2056,85 @@ app.post('/users/:id/hello', auth, (req, res) => {
       return res.status(400).json(fail(req, 'Bu kişiyle sohbet kapalı.'));
     }
     const t = now();
-    const existing = (db.chats || []).find(
+    const liveDm = (db.chats || []).find(
       (c) =>
+        c.pinId === 'dm' &&
         (c.memberIds || []).includes(req.userId) &&
         (c.memberIds || []).includes(otherId) &&
-        c.pinId === 'dm' &&
         !(c.hiddenIds || []).includes(req.userId) &&
         (!c.closesAt || c.closesAt > t),
     );
-    if (existing) {
-      existing.hiddenIds = (existing.hiddenIds || []).filter((id) => id !== req.userId);
+    if (liveDm) {
+      liveDm.hiddenIds = (liveDm.hiddenIds || []).filter((id) => id !== req.userId);
       save(db);
       emitAllRelated([req.userId, otherId]);
-      return res.json({ chatId: existing.id, snapshot: snapshotFor(db, req.userId) });
+      return res.json({ chatId: liveDm.id, snapshot: snapshotFor(db, req.userId) });
     }
-    const chat = {
-      id: uid('chat'),
-      pinId: 'dm',
-      memberIds: [req.userId, otherId],
-      closesAt: t + 48 * 60 * 60 * 1000,
-      messages: [
-        {
-          id: uid('msg'),
-          fromId: 'system',
-          text: `${me.name || 'Biri'} selam attı. Kısa yazın, yüz yüze tanışın.`,
-          at: t,
-        },
-      ],
-    };
-    db.chats = db.chats || [];
-    db.chats.unshift(chat);
+    const pending = (db.requests || []).find(
+      (r) =>
+        r.pinId === 'hello' &&
+        r.status === 'pending' &&
+        ((r.fromId === req.userId && r.toId === otherId) ||
+          (r.fromId === otherId && r.toId === req.userId)),
+    );
+    if (pending) {
+      if (pending.fromId === req.userId) {
+        return res.json({
+          chatId: null,
+          pending: true,
+          snapshot: snapshotFor(db, req.userId),
+        });
+      }
+      pending.status = 'accepted';
+      const chat = {
+        id: uid('chat'),
+        pinId: 'dm',
+        memberIds: [req.userId, otherId],
+        closesAt: t + 48 * 60 * 60 * 1000,
+        messages: [
+          {
+            id: uid('msg'),
+            fromId: 'system',
+            text: `${me.name || 'Biri'} ile eşleştiniz. Kısa konuşun, yüz yüze tanışın.`,
+            at: t,
+          },
+        ],
+      };
+      db.chats = db.chats || [];
+      db.chats.unshift(chat);
+      save(db);
+      emitAllRelated([req.userId, otherId]);
+      emitNotice(otherId, {
+        id: uid('note'),
+        type: 'accepted',
+        title: `${me.name || 'Biri'} onayladı`,
+        body: 'Sohbet açıldı. Kısa konuşun, yüz yüze tanışın.',
+        chatId: chat.id,
+      });
+      return res.json({ chatId: chat.id, snapshot: snapshotFor(db, req.userId) });
+    }
+    db.requests = db.requests || [];
+    db.requests.unshift({
+      id: uid('req'),
+      pinId: 'hello',
+      fromId: req.userId,
+      toId: otherId,
+      status: 'pending',
+      createdAt: t,
+    });
     save(db);
     emitAllRelated([req.userId, otherId]);
     emitNotice(otherId, {
       id: uid('note'),
-      type: 'message',
+      type: 'join',
       title: `${me.name || 'Biri'} selam attı`,
-      body: 'Sohbet açıldı.',
-      chatId: chat.id,
+      body: 'Onaylarsan sohbet açılır.',
     });
-    return res.json({ chatId: chat.id, snapshot: snapshotFor(db, req.userId) });
+    return res.json({
+      chatId: null,
+      pending: true,
+      snapshot: snapshotFor(db, req.userId),
+    });
   } catch (err) {
     console.error('hello', err);
     return res.status(500).json(fail(req, 'Selam açılamadı.'));

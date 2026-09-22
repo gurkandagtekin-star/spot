@@ -389,7 +389,7 @@ export function MapScreen({
         style={styles.fab}
         onPress={() => {
           if (!pro.isPro && spot.remainingPins <= 0) {
-            if (pro.adMarksLeft > 0) flash(t('map.watchAdHint'));
+            if (ads.adsEnabled && pro.adMarksLeft > 0) flash(t('map.watchAdHint'));
             else onOpenPro();
             return;
           }
@@ -406,17 +406,21 @@ export function MapScreen({
         visible={compose}
         remaining={spot.remainingPins}
         isPro={pro.isPro}
-        adMarksLeft={pro.adMarksLeft}
-        onWatchAd={async () => {
-          const ok = await ads.showRewarded();
-          if (!ok) return false;
-          const res = await pro.claimAdMark();
-          if (!res.ok) {
-            flash(res.reason);
-            return false;
-          }
-            flash(t('map.adGranted'));
-          return true;
+        adMarksLeft={ads.adsEnabled ? pro.adMarksLeft : 0}
+        onWatchAd={
+          ads.adsEnabled
+            ? async () => {
+                const ok = await ads.showRewarded();
+                if (!ok) return false;
+                const res = await pro.claimAdMark();
+                if (!res.ok) {
+                  flash(res.reason);
+                  return false;
+                }
+                flash(t('map.adGranted'));
+                return true;
+              }
+            : undefined
         }}
         onOpenPro={onOpenPro}
         placeName={placeName}

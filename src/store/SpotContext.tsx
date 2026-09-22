@@ -180,7 +180,9 @@ type SpotContextValue = SpotState & {
   ) => Promise<{ ok: true } | { ok: false; reason: string }>;
   startHello: (
     userId: string,
-  ) => Promise<{ ok: true; chatId: string } | { ok: false; reason: string }>;
+  ) => Promise<
+    { ok: true; chatId?: string; pending?: boolean } | { ok: false; reason: string }
+  >;
   postWallNote: (
     userId: string,
     text: string,
@@ -1214,14 +1216,25 @@ export function SpotProvider({ children }: { children: ReactNode }) {
       }
       const open = state.chats.find(
         (c) =>
+          c.pinId === 'dm' &&
           c.memberIds.includes(userId) &&
+          c.memberIds.length === 2 &&
           (!c.closesAt || c.closesAt > Date.now()),
       );
       if (open) return { ok: true, chatId: open.id };
+      const waiting = state.requests.find(
+        (r) =>
+          r.pinId === 'hello' &&
+          r.status === 'pending' &&
+          r.fromId === state.me.id &&
+          r.toId === userId,
+      );
+      if (waiting) return { ok: true, pending: true };
       try {
         const res = await api.startHello(userId);
         hydrate(res.snapshot);
-        return { ok: true, chatId: res.chatId };
+        if (res.chatId) return { ok: true, chatId: res.chatId };
+        return { ok: true, pending: true };
       } catch (err) {
         return {
           ok: false,

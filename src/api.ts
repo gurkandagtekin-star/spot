@@ -277,9 +277,12 @@ export const api = {
   unfollowUser: (userId: string) =>
     request<Snapshot>(`/users/${userId}/follow`, { method: 'DELETE' }),
   startHello: (userId: string) =>
-    request<{ chatId: string; snapshot: Snapshot }>(`/users/${userId}/hello`, {
-      method: 'POST',
-    }),
+    request<{ chatId?: string | null; pending?: boolean; snapshot: Snapshot }>(
+      `/users/${userId}/hello`,
+      {
+        method: 'POST',
+      },
+    ),
   postWallNote: async (targetUserId: string, text: string, authorId?: string) => {
     const body = {
       authorId: authorId || targetUserId,

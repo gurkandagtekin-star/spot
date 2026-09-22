@@ -16,6 +16,7 @@ type Props = {
   mine: boolean;
   distance: string;
   myRequest?: JoinRequest;
+  alreadyChatId?: string;
   incoming: { request: JoinRequest; from: Profile }[];
   onClose: () => void;
   onJoin: () => Promise<string | null> | string | null;
@@ -35,6 +36,7 @@ export function PinSheet({
   mine,
   distance,
   myRequest,
+  alreadyChatId,
   incoming,
   onClose,
   onJoin,
@@ -59,7 +61,7 @@ export function PinSheet({
   const joinLabel =
     myRequest?.status === 'pending'
       ? t('discover.waiting')
-      : myRequest?.status === 'accepted'
+      : myRequest?.status === 'accepted' || alreadyChatId
         ? t('discover.chatOpen')
         : seatsFull
           ? t('discover.fullCta')
@@ -181,7 +183,7 @@ export function PinSheet({
                   <Text style={styles.dangerText}>{t('pin.deleteMark')}</Text>
                 </Pressable>
               </View>
-            ) : myRequest?.status === 'accepted' && onOpenChat ? (
+            ) : (myRequest?.status === 'accepted' || alreadyChatId) && onOpenChat ? (
               <Pressable style={styles.cta} onPress={onOpenChat}>
                 <Text style={styles.ctaText}>{t('pin.goChat')}</Text>
               </Pressable>

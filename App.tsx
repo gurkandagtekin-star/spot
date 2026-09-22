@@ -1,4 +1,5 @@
 import { StatusBar } from 'expo-status-bar';
+import { NavigationBar } from 'expo-navigation-bar';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { useAndroidBack } from './src/hooks/useAndroidBack';
@@ -33,6 +34,15 @@ import { I18nProvider } from './src/i18n/I18nProvider';
 import type { MapIntent, Screen } from './src/types';
 
 const TAB_ORDER: Exclude<Screen, 'chat'>[] = ['discover', 'map', 'chats', 'profile'];
+
+function SystemChrome({ lightIcons }: { lightIcons: boolean }) {
+  return (
+    <>
+      <StatusBar style={lightIcons ? 'light' : 'dark'} />
+      <NavigationBar style={lightIcons ? 'light' : 'dark'} hidden={false} />
+    </>
+  );
+}
 
 function Root() {
   const spot = useSpot();
@@ -195,7 +205,7 @@ function Root() {
   if (phase !== 'app') {
     return (
       <View style={styles.safe}>
-        <StatusBar style="light" />
+        <SystemChrome lightIcons />
         <ScreenTransition token={phase} direction={phaseDir}>
           {phase === 'signup' ? (
             <SignupScreen />
@@ -225,7 +235,7 @@ function Root() {
 
   return (
     <SafeAreaView style={styles.safe} edges={flushTop ? ['left', 'right'] : ['top', 'left', 'right']}>
-      <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
+      <SystemChrome lightIcons={scheme === 'dark'} />
       <View style={styles.body}>
         <ScreenTransition token={layer} direction={layerDir}>
           {wall ? (

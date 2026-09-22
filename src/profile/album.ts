@@ -3,17 +3,21 @@ import { Platform } from 'react-native';
 const FILE = 'spot-profile-album.json';
 let cache: Record<string, string[]> = {};
 
-function durable(uri: string) {
+export function durableUri(uri: string) {
   const value = String(uri || '').trim();
   if (!value || value.startsWith('data:') || value.startsWith('blob:')) return '';
   return value;
+}
+
+export function isDevicePhoto(uri: string) {
+  return /^(file:|content:)/i.test(String(uri || ''));
 }
 
 function unique(list: string[]) {
   const out: string[] = [];
   const seen = new Set<string>();
   list.forEach((raw) => {
-    const uri = durable(raw);
+    const uri = durableUri(raw);
     if (!uri) return;
     const key = /^(file:|content:)/i.test(uri) ? uri : uri.split('?')[0];
     if (seen.has(key)) return;

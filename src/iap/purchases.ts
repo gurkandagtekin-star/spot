@@ -1,4 +1,3 @@
-import { Platform } from 'react-native';
 import Purchases, {
   LOG_LEVEL,
   PACKAGE_TYPE,
@@ -10,10 +9,10 @@ import Purchases, {
 } from 'react-native-purchases';
 import { localError } from '../i18n/errors';
 import {
-  IAP_ENABLED,
   PRO_ENTITLEMENT_ID,
   PRO_PRODUCT_IDS,
-  rcApiKey,
+  iapEnabledOnThisDevice,
+  rcPublicKeyForOs,
   type ProPlanId,
 } from '../iap';
 
@@ -38,10 +37,9 @@ export function hasProEntitlement(info: CustomerInfo | null | undefined) {
 }
 
 export async function configurePurchases() {
-  if (configured) return IAP_ENABLED;
-  if (Platform.OS === 'web' || !IAP_ENABLED) return false;
-  const { android, ios } = rcApiKey();
-  const apiKey = Platform.OS === 'ios' ? ios || android : android || ios;
+  if (configured) return iapEnabledOnThisDevice();
+  if (!iapEnabledOnThisDevice()) return false;
+  const apiKey = rcPublicKeyForOs();
   if (!apiKey) return false;
   if (typeof __DEV__ !== 'undefined' && __DEV__) {
     Purchases.setLogLevel(LOG_LEVEL.DEBUG);
@@ -66,9 +64,11 @@ export async function identifyPurchaser(appUserId?: string | null) {
 }
 
 function planIdOf(pkg: PurchasesPackage): ProPlanId | null {
-  const productId = String(pkg.product.identifier || '');
-  if (productId === PRO_PRODUCT_IDS.monthly) return 'monthly';
-  if (productId === PRO_PRODUCT_IDS.yearly) return 'yearly';
+  const productId = String(pkg.product.identifier || '').toLowerCase();
+  if (productId === PRO_PRODUCT_IDS.monthly.toLowerCase()) return 'monthly';
+  if (productId === PRO_PRODUCT_IDS.yearly.toLowerCase()) return 'yearly';
+  if (productId.includes('year')) return 'yearly';
+  if (productId.includes('month')) return 'monthly';
   if (pkg.packageType === PACKAGE_TYPE.MONTHLY) return 'monthly';
   if (pkg.packageType === PACKAGE_TYPE.ANNUAL) return 'yearly';
   return null;
@@ -113,10 +113,11 @@ export async function fetchStorePlans(): Promise<StorePlan[]> {
   ]);
   const fromStore: StorePlan[] = [];
   for (const product of products) {
+    const raw = String(product.identifier || '').toLowerCase();
     const id =
-      product.identifier === PRO_PRODUCT_IDS.monthly
+      raw === PRO_PRODUCT_IDS.monthly.toLowerCase() || raw.includes('month')
         ? ('monthly' as const)
-        : product.identifier === PRO_PRODUCT_IDS.yearly
+        : raw === PRO_PRODUCT_IDS.yearly.toLowerCase() || raw.includes('year')
           ? ('yearly' as const)
           : null;
     const price = String(product.priceString || '').trim();
@@ -183,6 +184,25 @@ export async function readCustomerInfo() {
   } catch {
     return null;
   }
+}
+
+export function proSyncFromCustomerInfo(info: CustomerInfo | null | undefined) {
+  const ent = info?.entitlements?.active?.[PRO_ENTITLEMENT_ID];
+  if (!ent) return null;
+  const productId = String(ent.productIdentifier || '');
+  const lower = productId.toLowerCase();
+  const plan: ProPlanId =
+    lower.includes('year') || productId === PRO_PRODUCT_IDS.yearly
+      ? 'yearly'
+      : 'monthly';
+  const expiresAt = ent.expirationDate
+    ? Date.parse(String(ent.expirationDate))
+    : undefined;
+  return {
+    productId,
+    plan,
+    expiresAt: Number.isFinite(expiresAt) ? expiresAt : undefined,
+  };
 }
 
 export function listenCustomerInfo(onInfo: (info: CustomerInfo) => void) {

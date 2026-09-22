@@ -28,6 +28,8 @@ import {
   pinKindLabel,
   pinQuotaLabel,
   remainingLabel,
+  liveChatWith,
+  pendingPairRequest,
 } from '../utils';
 import { useTranslation } from 'react-i18next';
 
@@ -132,6 +134,22 @@ export function DiscoverScreen({
       onShowOnMap(pin.id);
       return;
     }
+    const open = liveChatWith(spot.chats, spot.meId, pin.authorId);
+    if (open) {
+      flash(t('chats.alreadyOpen'));
+      onOpenChat(open.id);
+      return;
+    }
+    const waiting = pendingPairRequest(
+      spot.requests,
+      [...spot.live, ...spot.pins],
+      spot.meId,
+      pin.authorId,
+    );
+    if (waiting) {
+      flash(t('discover.pending'));
+      return;
+    }
     const mine = spot.requests.find(
       (r) => r.pinId === pin.id && r.fromId === spot.meId,
     );
@@ -151,6 +169,11 @@ export function DiscoverScreen({
       return;
     }
     const res = await spot.sendJoin(pin.id);
+    if (res.ok && res.chatId) {
+      flash(t('chats.alreadyOpen'));
+      onOpenChat(res.chatId);
+      return;
+    }
     flash(res.ok ? t('discover.helloSent') : res.reason);
   };
 

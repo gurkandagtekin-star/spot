@@ -52,7 +52,7 @@ export function MapHint({ visible, onDismiss }: Props) {
   );
 }
 
-const createStyles = (colors: ColorTokens) =>
+const createStyles = (_colors: ColorTokens) =>
   StyleSheet.create({
     wrap: {
       position: 'absolute',
@@ -77,7 +77,7 @@ const createStyles = (colors: ColorTokens) =>
       elevation: 8,
     },
     kicker: {
-      color: colors.coral,
+      color: '#FF8FB3',
       fontWeight: '800',
       fontSize: 11,
       letterSpacing: 0.7,
@@ -86,10 +86,10 @@ const createStyles = (colors: ColorTokens) =>
     },
     title: {
       marginTop: 4,
-      color: colors.ink,
+      color: '#fff',
       fontWeight: '800',
       fontSize: 15,
-      lineHeight: 20,
+      lineHeight: 22,
       textAlign: 'center',
     },
   });

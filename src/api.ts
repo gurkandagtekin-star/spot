@@ -244,10 +244,18 @@ export const api = {
   }) => request<Snapshot>('/pins', { method: 'POST', body }),
   activatePro: (plan: 'monthly' | 'yearly') =>
     request<Snapshot>('/me/pro', { method: 'POST', body: { plan } }),
+  syncStorePro: (body: {
+    plan?: 'monthly' | 'yearly';
+    productId?: string;
+    expiresAt?: number;
+  }) => request<Snapshot>('/me/pro/sync', { method: 'POST', body }),
   lookupPlace: (lat: number, lng: number) =>
     request<{ placeName: string; area?: string }>(`/geo/reverse?lat=${lat}&lng=${lng}`),
   joinPin: (pinId: string) =>
-    request<Snapshot>(`/pins/${pinId}/join`, { method: 'POST' }),
+    request<Snapshot & { chatId?: string; already?: boolean }>(
+      `/pins/${pinId}/join`,
+      { method: 'POST' },
+    ),
   decide: (requestId: string, accept: boolean) =>
     request<{ chatId: string | null; filled?: boolean; snapshot: Snapshot }>(
       `/requests/${requestId}/decide`,
@@ -266,6 +274,8 @@ export const api = {
     request<Snapshot>('/me/photo', { method: 'POST', body: { dataUrl } }),
   uploadPhotos: (dataUrls: string[]) =>
     request<Snapshot>('/me/photos', { method: 'POST', body: { dataUrls } }),
+  removePhoto: (url: string) =>
+    request<Snapshot>('/me/photos', { method: 'DELETE', body: { url } }),
   closePin: (pinId: string) =>
     request<Snapshot>(`/pins/${pinId}`, { method: 'DELETE' }),
   blockUser: (userId: string) =>
@@ -277,7 +287,12 @@ export const api = {
   unfollowUser: (userId: string) =>
     request<Snapshot>(`/users/${userId}/follow`, { method: 'DELETE' }),
   startHello: (userId: string) =>
-    request<{ chatId?: string | null; pending?: boolean; snapshot: Snapshot }>(
+    request<{
+      chatId?: string | null;
+      pending?: boolean;
+      already?: boolean;
+      snapshot: Snapshot;
+    }>(
       `/users/${userId}/hello`,
       {
         method: 'POST',

@@ -30,11 +30,12 @@ import {
 } from '../profile/persist';
 import {
   albumFor,
+  isDevicePhoto,
   loadAlbums,
   rememberAlbum,
   stashAlbumPhoto,
 } from '../profile/album';
-import { displayName, livePins, pinCaption, pinEmbeddedAnon, pinEmbeddedPhoto, pinEmbeddedSeats, pinsLeftToday, withPinMeta } from '../utils';
+import { displayName, liveChatWith, livePins, pendingPairRequest, pinCaption, pinEmbeddedAnon, pinEmbeddedPhoto, pinEmbeddedSeats, pinsLeftToday, withPinMeta } from '../utils';
 import {
   hideChatLocal,
   hideRequestLocal,
@@ -128,7 +129,10 @@ type SpotContextValue = SpotState & {
   ) => Promise<{ ok: true } | { ok: false; reason: string }>;
   sendJoin: (
     pinId: string,
-  ) => Promise<{ ok: true } | { ok: false; reason: string }>;
+  ) => Promise<
+    | { ok: true; chatId?: string; already?: boolean }
+    | { ok: false; reason: string }
+  >;
   withdrawRequest: (
     requestId: string,
   ) => Promise<{ ok: true } | { ok: false; reason: string }>;
@@ -152,15 +156,24 @@ type SpotContextValue = SpotState & {
   rememberProfiles: (people: Profile[]) => void;
   searchUsers: (q: string) => Promise<Profile[]>;
   setLocation: (loc: { lat: number; lng: number }) => void;
+  refreshGps: () => Promise<boolean>;
   activatePro: (
     plan: 'monthly' | 'yearly',
   ) => Promise<{ ok: true } | { ok: false; reason: string }>;
+  syncStorePro: (body: {
+    plan?: 'monthly' | 'yearly';
+    productId?: string;
+    expiresAt?: number;
+  }) => Promise<void>;
   uploadPhoto: (
     dataUrl: string,
     localUri?: string,
   ) => Promise<{ ok: true } | { ok: false; reason: string }>;
   uploadPhotos: (
     items: { dataUrl: string; uri?: string }[],
+  ) => Promise<{ ok: true } | { ok: false; reason: string }>;
+  removePhoto: (
+    url: string,
   ) => Promise<{ ok: true } | { ok: false; reason: string }>;
   finishOnboarding: () => Promise<{ ok: true } | { ok: false; reason: string }>;
   closePin: (
@@ -328,26 +341,20 @@ function applySnap(
 ): SpotState {
   const rawMe = snap.me ?? emptyMe;
   const followingIds = mergeFollowingIds(rawMe.followingIds, rawMe.id);
-  const prevMe = prev.me?.id === rawMe.id ? prev.me : undefined;
   const shapedMe = mergeProfile(rawMe);
   const localAlbum = mergeKeepPhotos(
-    albumFor(rawMe.id),
-    prevMe?.photos,
-    overlayFor(rawMe.id)?.photos,
+    albumFor(rawMe.id).filter(isDevicePhoto),
   );
   const serverAlbum = mergeKeepPhotos(shapedMe.photos, shapedMe.photoUrl);
-  const photos =
-    serverAlbum.length >= 2
-      ? serverAlbum
-      : mergeKeepPhotos(localAlbum, serverAlbum, prevMe?.photoUrl);
-  if (rawMe.id && photos.length) rememberAlbum(rawMe.id, photos);
+  const photos = mergeKeepPhotos(serverAlbum, localAlbum);
+  if (rawMe.id) rememberAlbum(rawMe.id, photos);
   const me = withMediaProfile(
     withLocalFollows(
       withLocalPosts(
         {
           ...shapedMe,
           photos,
-          photoUrl: photos[0] || shapedMe.photoUrl || prevMe?.photoUrl,
+          photoUrl: photos[0] || '',
         },
         rawMe.id,
       ),
@@ -787,8 +794,31 @@ export function SpotProvider({ children }: { children: ReactNode }) {
     };
 
     const sendJoin: SpotContextValue['sendJoin'] = async (pinId) => {
+      const pin =
+        state.live.find((p) => p.id === pinId) ||
+        state.pins.find((p) => p.id === pinId);
+      if (pin) {
+        const open = liveChatWith(state.chats, state.me.id, pin.authorId);
+        if (open) return { ok: true, chatId: open.id, already: true };
+        const waiting = pendingPairRequest(
+          state.requests,
+          [...state.live, ...state.pins],
+          state.me.id,
+          pin.authorId,
+        );
+        if (waiting) {
+          return {
+            ok: false,
+            reason: localError('İstek zaten gönderildi, onay bekleniyor.'),
+          };
+        }
+      }
       try {
-        hydrate(await api.joinPin(pinId));
+        const data = await api.joinPin(pinId);
+        hydrate(data);
+        if (data.chatId) {
+          return { ok: true, chatId: data.chatId, already: Boolean(data.already) };
+        }
         return { ok: true };
       } catch (err) {
         return {
@@ -942,6 +972,27 @@ export function SpotProvider({ children }: { children: ReactNode }) {
       setState((s) => ({ ...s, location: loc }));
     };
 
+    const refreshGps: SpotContextValue['refreshGps'] = async () => {
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== 'granted') {
+          setState((s) => ({ ...s, hasGps: false }));
+          return false;
+        }
+        const pos = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Balanced,
+        });
+        setState((s) => ({
+          ...s,
+          hasGps: true,
+          location: { lat: pos.coords.latitude, lng: pos.coords.longitude },
+        }));
+        return true;
+      } catch {
+        return false;
+      }
+    };
+
     const activatePro: SpotContextValue['activatePro'] = async (plan) => {
       try {
         hydrate(await api.activatePro(plan));
@@ -951,6 +1002,14 @@ export function SpotProvider({ children }: { children: ReactNode }) {
           ok: false,
           reason: failCatch(err, 'Satın alma tamamlanamadı.'),
         };
+      }
+    };
+
+    const syncStorePro: SpotContextValue['syncStorePro'] = async (body) => {
+      try {
+        hydrate(await api.syncStorePro(body));
+      } catch {
+        /* mağaza yetkisi client’ta durur; sunucu bir sonraki denemede güncellenir */
       }
     };
 
@@ -996,6 +1055,41 @@ export function SpotProvider({ children }: { children: ReactNode }) {
 
     const uploadPhoto: SpotContextValue['uploadPhoto'] = async (dataUrl, localUri) => {
       return uploadPhotos([{ dataUrl, uri: localUri }]);
+    };
+
+    const removePhoto: SpotContextValue['removePhoto'] = async (url) => {
+      const id = state.me.id;
+      const key = String(url || '').split('?')[0];
+      const photoKey = (value: string) => {
+        const raw = String(value || '').split('?')[0];
+        const idx = raw.lastIndexOf('/uploads/');
+        return idx >= 0 ? raw.slice(idx) : raw;
+      };
+      const match = photoKey(url);
+      const leftover = mergeKeepPhotos(state.me.photos, state.me.photoUrl).filter(
+        (item) => photoKey(item) !== match && item.split('?')[0] !== key,
+      );
+      if (id) {
+        rememberAlbum(id, leftover.filter(isDevicePhoto));
+        rememberOverlay(id, { photos: leftover });
+      }
+      setState((s) => ({
+        ...s,
+        me: {
+          ...s.me,
+          photos: leftover,
+          photoUrl: leftover[0] || '',
+        },
+      }));
+      try {
+        hydrate(await api.removePhoto(url));
+        return { ok: true };
+      } catch (err) {
+        return {
+          ok: false,
+          reason: failCatch(err, 'Fotoğraf kaldırılamadı.'),
+        };
+      }
     };
 
     const finishOnboarding: SpotContextValue['finishOnboarding'] = async () => {
@@ -1214,20 +1308,13 @@ export function SpotProvider({ children }: { children: ReactNode }) {
       if (!userId || userId === state.me.id) {
         return { ok: false, reason: localError('Kendine selam atamazsın.') };
       }
-      const open = state.chats.find(
-        (c) =>
-          c.pinId === 'dm' &&
-          c.memberIds.includes(userId) &&
-          c.memberIds.length === 2 &&
-          (!c.closesAt || c.closesAt > Date.now()),
-      );
+      const open = liveChatWith(state.chats, state.me.id, userId);
       if (open) return { ok: true, chatId: open.id };
-      const waiting = state.requests.find(
-        (r) =>
-          r.pinId === 'hello' &&
-          r.status === 'pending' &&
-          r.fromId === state.me.id &&
-          r.toId === userId,
+      const waiting = pendingPairRequest(
+        state.requests,
+        [...state.live, ...state.pins],
+        state.me.id,
+        userId,
       );
       if (waiting) return { ok: true, pending: true };
       try {
@@ -1449,9 +1536,12 @@ export function SpotProvider({ children }: { children: ReactNode }) {
       rememberProfiles,
       searchUsers,
       setLocation,
+      refreshGps,
       activatePro,
+      syncStorePro,
       uploadPhoto,
       uploadPhotos,
+      removePhoto,
       finishOnboarding,
       closePin,
       blockUser,

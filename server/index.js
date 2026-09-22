@@ -104,8 +104,38 @@ async function reverseGeocode(lat, lng) {
   return (await reverseLookup(lat, lng)).placeName;
 }
 
+const STORE_PRODUCT_IDS = {
+  monthly: process.env.IAP_MONTHLY_ID || process.env.EXPO_PUBLIC_IAP_MONTHLY_ID || 'markdate_pro_monthly',
+  yearly: process.env.IAP_YEARLY_ID || process.env.EXPO_PUBLIC_IAP_YEARLY_ID || 'markdate_pro_yearly',
+};
+
 function isProUser(user) {
   return Boolean(user && user.proUntil && user.proUntil > now());
+}
+
+function planFromProductId(raw) {
+  const id = String(raw || '').toLowerCase();
+  if (id === String(STORE_PRODUCT_IDS.yearly).toLowerCase() || id.includes('year')) {
+    return 'yearly';
+  }
+  if (id === String(STORE_PRODUCT_IDS.monthly).toLowerCase() || id.includes('month')) {
+    return 'monthly';
+  }
+  return '';
+}
+
+function grantStorePro(user, { plan, productId, expiresAt, trustExpiration = false }) {
+  if (!user) return;
+  const nextPlan =
+    plan === 'yearly' || plan === 'monthly' ? plan : planFromProductId(productId) || 'monthly';
+  const cap = now() + 400 * 24 * 60 * 60 * 1000;
+  let until = Number(expiresAt);
+  if (!Number.isFinite(until) || until <= now()) {
+    until = now() + (nextPlan === 'yearly' ? 365 : 30) * 24 * 60 * 60 * 1000;
+  }
+  user.proPlan = nextPlan;
+  user.proUntil = trustExpiration ? until : Math.min(until, cap);
+  user.proProductId = String(productId || STORE_PRODUCT_IDS[nextPlan] || '');
 }
 
 function dayStartMs(ts = now()) {
@@ -535,6 +565,55 @@ function blockedPair(db, a, b) {
   );
 }
 
+function chatOpen(c, t) {
+  return Boolean(c) && (!c.closesAt || c.closesAt > t);
+}
+
+function chatHasPair(c, a, b) {
+  const ids = c?.memberIds || [];
+  return ids.includes(a) && ids.includes(b);
+}
+
+function liveChatBetween(db, a, b) {
+  if (!a || !b || a === b) return null;
+  const t = now();
+  const open = (db.chats || []).filter((c) => chatHasPair(c, a, b) && chatOpen(c, t));
+  return (
+    open.find((c) => (c.memberIds || []).length === 2) ||
+    open[0] ||
+    null
+  );
+}
+
+function revealChatFor(chat, userId) {
+  if (!chat) return;
+  chat.hiddenIds = (chat.hiddenIds || []).filter((id) => id !== userId);
+}
+
+function pendingRequestBetween(db, a, b) {
+  if (!a || !b || a === b) return null;
+  return (db.requests || []).find((r) => {
+    if (r.status !== 'pending') return false;
+    if (r.pinId === 'hello') {
+      return (
+        (r.fromId === a && r.toId === b) || (r.fromId === b && r.toId === a)
+      );
+    }
+    const pin = (db.pins || []).find((p) => p.id === r.pinId);
+    const host = pin?.authorId;
+    if (!host) return false;
+    return (r.fromId === a && host === b) || (r.fromId === b && host === a);
+  });
+}
+
+function pairRelation(db, a, b) {
+  const chat = liveChatBetween(db, a, b);
+  if (chat) return { kind: 'chat', chat };
+  const pending = pendingRequestBetween(db, a, b);
+  if (pending) return { kind: 'pending', request: pending };
+  return { kind: 'none' };
+}
+
 function migrateBlocks(db) {
   db.blocks = db.blocks || [];
   db.reports = db.reports || [];
@@ -607,6 +686,13 @@ function stripPhotoKey(url) {
   return String(url || '').split('?')[0];
 }
 
+function photoMatchKey(url) {
+  const raw = stripPhotoKey(url);
+  const idx = raw.lastIndexOf('/uploads/');
+  if (idx >= 0) return raw.slice(idx);
+  return raw;
+}
+
 function albumPhotos(user) {
   const list = [];
   const seen = new Set();
@@ -621,6 +707,19 @@ function albumPhotos(user) {
   (Array.isArray(user?.photos) ? user.photos : []).forEach(add);
   add(user?.photoUrl);
   return list.slice(0, 6);
+}
+
+function unlinkUpload(url) {
+  try {
+    const rel = String(stripPhotoKey(url) || '')
+      .split('/uploads/')
+      .pop();
+    if (!rel || rel.includes('..') || /[\\/]/.test(rel)) return;
+    const file = path.join(UPLOAD_DIR, rel);
+    if (fs.existsSync(file)) fs.unlinkSync(file);
+  } catch {
+    /* ignore */
+  }
 }
 
 function publicProfile(user, extra = {}) {
@@ -1110,6 +1209,27 @@ app.post('/me/photos', auth, (req, res) => {
   res.json(snapshotFor(db, req.userId));
 });
 
+app.delete('/me/photos', auth, (req, res) => {
+  const user = userById(db, req.userId);
+  if (!user) return res.status(404).json(fail(req, 'Profil yok.'));
+  const target = photoMatchKey(req.body?.url);
+  if (!target) {
+    return res.status(400).json(fail(req, 'Kaldırılacak fotoğraf yok.'));
+  }
+  const album = albumPhotos(user);
+  const kept = album.filter((uri) => photoMatchKey(uri) !== target);
+  if (kept.length === album.length) {
+    return res.status(400).json(fail(req, 'Bu fotoğraf profilde yok.'));
+  }
+  const dropped = album.find((uri) => photoMatchKey(uri) === target);
+  if (dropped) unlinkUpload(dropped);
+  user.photos = kept;
+  user.photoUrl = kept[0] || '';
+  save(db);
+  emitSnapshot(req.userId);
+  res.json(snapshotFor(db, req.userId));
+});
+
 app.post('/me/pro', auth, (req, res) => {
   if (!adminOk(req)) {
     return res.status(404).json(fail(req, 'Yok.'));
@@ -1117,12 +1237,69 @@ app.post('/me/pro', auth, (req, res) => {
   const user = userById(db, req.userId);
   if (!user) return res.status(404).json(fail(req, 'Profil yok.'));
   const plan = req.body?.plan === 'monthly' ? 'monthly' : 'yearly';
-  const days = plan === 'monthly' ? 30 : 365;
-  user.proPlan = plan;
-  user.proUntil = now() + days * 24 * 60 * 60 * 1000;
+  grantStorePro(user, { plan });
   save(db);
   emitSnapshot(req.userId);
   res.json(snapshotFor(db, req.userId));
+});
+
+app.post('/me/pro/sync', auth, (req, res) => {
+  const user = userById(db, req.userId);
+  if (!user) return res.status(404).json(fail(req, 'Profil yok.'));
+  if (tooMany(req, 'prosync', 20, 60 * 60 * 1000)) {
+    return rateLimited(req, res, 'Biraz yavaş. Az sonra tekrar dene.');
+  }
+  const plan = req.body?.plan === 'yearly' ? 'yearly' : req.body?.plan === 'monthly' ? 'monthly' : '';
+  const productId = String(req.body?.productId || '');
+  if (!plan && !planFromProductId(productId)) {
+    return res.status(400).json(fail(req, 'Satın alma ürünü geçersiz.'));
+  }
+  grantStorePro(user, {
+    plan: plan || planFromProductId(productId),
+    productId,
+    expiresAt: req.body?.expiresAt,
+  });
+  save(db);
+  emitSnapshot(req.userId);
+  res.json(snapshotFor(db, req.userId));
+});
+
+function rcWebhookOk(req) {
+  const secret = String(process.env.REVENUECAT_WEBHOOK_AUTH || '').trim();
+  if (!secret) return false;
+  const auth = String(req.headers.authorization || '').trim();
+  return auth === `Bearer ${secret}` || auth === secret;
+}
+
+app.post('/webhooks/revenuecat', (req, res) => {
+  if (!rcWebhookOk(req)) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  const event = req.body?.event || req.body || {};
+  const userId = String(event.app_user_id || '').trim();
+  const user = userById(db, userId);
+  if (!user) return res.json({ ok: true, ignored: 'user' });
+  const type = String(event.type || '');
+  const productId = String(event.product_id || event.productId || '');
+  if (type === 'EXPIRATION' || type === 'SUBSCRIPTION_PAUSED') {
+    user.proUntil = now() - 1;
+  } else if (
+    type === 'INITIAL_PURCHASE' ||
+    type === 'RENEWAL' ||
+    type === 'UNCANCELLATION' ||
+    type === 'PRODUCT_CHANGE' ||
+    type === 'NON_RENEWING_PURCHASE' ||
+    type === 'SUBSCRIPTION_EXTENDED'
+  ) {
+    grantStorePro(user, {
+      productId,
+      expiresAt: event.expiration_at_ms,
+      trustExpiration: true,
+    });
+  }
+  save(db);
+  emitSnapshot(user.id);
+  res.json({ ok: true });
 });
 
 app.post('/me/ad-mark', auth, (req, res) => {
@@ -1471,6 +1648,20 @@ app.post('/pins/:id/join', auth, (req, res) => {
   if (blockedPair(db, req.userId, pin.authorId)) {
     return res.status(400).json(fail(req, 'Bu kişiyle eşleşme kapalı.'));
   }
+  const relation = pairRelation(db, req.userId, pin.authorId);
+  if (relation.kind === 'chat') {
+    revealChatFor(relation.chat, req.userId);
+    save(db);
+    emitAllRelated([req.userId, pin.authorId]);
+    return res.json({
+      ...snapshotFor(db, req.userId),
+      chatId: relation.chat.id,
+      already: true,
+    });
+  }
+  if (relation.kind === 'pending') {
+    return res.status(400).json(fail(req, 'İstek zaten gönderildi, onay bekleniyor.'));
+  }
   const existing = db.requests.find(
     (r) => r.pinId === pin.id && r.fromId === req.userId && r.status !== 'declined',
   );
@@ -1478,7 +1669,17 @@ app.post('/pins/:id/join', auth, (req, res) => {
     return res.status(400).json(fail(req, 'İstek zaten gönderildi, onay bekleniyor.'));
   }
   if (existing?.status === 'accepted') {
-    return res.status(400).json(fail(req, 'Zaten eşleştiniz.'));
+    const chat = liveChatBetween(db, req.userId, pin.authorId);
+    if (chat) {
+      revealChatFor(chat, req.userId);
+      save(db);
+      return res.json({
+        ...snapshotFor(db, req.userId),
+        chatId: chat.id,
+        already: true,
+      });
+    }
+    return res.status(400).json(fail(req, 'Zaten bu kişiyle bir sohbetiniz var.'));
   }
   const cap = pinCapacity(pin);
   if (cap && pinFilled(db, pin) >= cap) {
@@ -1525,18 +1726,11 @@ app.post('/requests/:id/decide', auth, (req, res) => {
     const from = userById(db, request.fromId);
     const host = userById(db, req.userId);
     const t = now();
-    const existingChat = (db.chats || []).find(
-      (c) =>
-        c.pinId === 'dm' &&
-        (c.memberIds || []).includes(req.userId) &&
-        (c.memberIds || []).includes(request.fromId) &&
-        (!c.closesAt || c.closesAt > t),
-    );
+    const existingChat = liveChatBetween(db, req.userId, request.fromId);
     let chatId = existingChat?.id || null;
     if (existingChat) {
-      existingChat.hiddenIds = (existingChat.hiddenIds || []).filter(
-        (id) => id !== req.userId && id !== request.fromId,
-      );
+      revealChatFor(existingChat, req.userId);
+      revealChatFor(existingChat, request.fromId);
     } else {
       const chat = {
         id: uid('chat'),
@@ -1588,16 +1782,15 @@ app.post('/requests/:id/decide', auth, (req, res) => {
   request.status = 'accepted';
   const from = userById(db, request.fromId);
   const host = userById(db, req.userId);
-  const existingChat = db.chats.find(
-    (c) => c.pinId === pin.id && (!c.closesAt || c.closesAt > now()),
-  );
+  const existingChat =
+    db.chats.find((c) => c.pinId === pin.id && (!c.closesAt || c.closesAt > now())) ||
+    liveChatBetween(db, req.userId, request.fromId);
   let chatId = existingChat?.id || null;
   if (existingChat) {
+    revealChatFor(existingChat, req.userId);
+    revealChatFor(existingChat, request.fromId);
     if (!existingChat.memberIds.includes(request.fromId)) {
       existingChat.memberIds.push(request.fromId);
-      existingChat.hiddenIds = (existingChat.hiddenIds || []).filter(
-        (id) => id !== request.fromId,
-      );
       existingChat.messages.push({
         id: uid('msg'),
         fromId: 'system',
@@ -2056,36 +2249,34 @@ app.post('/users/:id/hello', auth, (req, res) => {
       return res.status(400).json(fail(req, 'Bu kişiyle sohbet kapalı.'));
     }
     const t = now();
-    const liveDm = (db.chats || []).find(
-      (c) =>
-        c.pinId === 'dm' &&
-        (c.memberIds || []).includes(req.userId) &&
-        (c.memberIds || []).includes(otherId) &&
-        !(c.hiddenIds || []).includes(req.userId) &&
-        (!c.closesAt || c.closesAt > t),
-    );
-    if (liveDm) {
-      liveDm.hiddenIds = (liveDm.hiddenIds || []).filter((id) => id !== req.userId);
+    const relation = pairRelation(db, req.userId, otherId);
+    if (relation.kind === 'chat') {
+      revealChatFor(relation.chat, req.userId);
       save(db);
       emitAllRelated([req.userId, otherId]);
-      return res.json({ chatId: liveDm.id, snapshot: snapshotFor(db, req.userId) });
+      return res.json({ chatId: relation.chat.id, already: true, snapshot: snapshotFor(db, req.userId) });
     }
-    const pending = (db.requests || []).find(
-      (r) =>
-        r.pinId === 'hello' &&
-        r.status === 'pending' &&
-        ((r.fromId === req.userId && r.toId === otherId) ||
-          (r.fromId === otherId && r.toId === req.userId)),
-    );
-    if (pending) {
-      if (pending.fromId === req.userId) {
+    if (relation.kind === 'pending') {
+      const waiting = relation.request;
+      if (waiting.pinId !== 'hello') {
+        return res.status(400).json(fail(req, 'İstek zaten gönderildi, onay bekleniyor.'));
+      }
+      if (waiting.fromId === req.userId) {
         return res.json({
           chatId: null,
           pending: true,
           snapshot: snapshotFor(db, req.userId),
         });
       }
-      pending.status = 'accepted';
+      waiting.status = 'accepted';
+      const existingChat = liveChatBetween(db, req.userId, otherId);
+      if (existingChat) {
+        revealChatFor(existingChat, req.userId);
+        revealChatFor(existingChat, otherId);
+        save(db);
+        emitAllRelated([req.userId, otherId]);
+        return res.json({ chatId: existingChat.id, snapshot: snapshotFor(db, req.userId) });
+      }
       const chat = {
         id: uid('chat'),
         pinId: 'dm',

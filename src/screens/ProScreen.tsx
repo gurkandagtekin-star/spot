@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useAndroidBack } from '../hooks/useAndroidBack';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { PRO_FEATURES } from '../data/pro';
-import { IAP_ENABLED, type ProPlanId } from '../iap';
+import { iapEnabledOnThisDevice, type ProPlanId } from '../iap';
 import { useIap } from '../iap/IapProvider';
 import { useSpot } from '../store/SpotContext';
 import { radius, type ColorTokens } from '../theme';
@@ -31,7 +31,7 @@ export function ProScreen({ onBack }: Props) {
   const active = Boolean(spot.me.isPro) || iap.hasPro;
   const plans = iap.plans;
   const selected = plans.find((p) => p.id === planId) || plans[0] || null;
-  const canBuy = IAP_ENABLED && Boolean(selected) && !iap.loading;
+  const canBuy = iapEnabledOnThisDevice() && Boolean(selected) && !iap.loading;
 
   useEffect(() => {
     void iap.refresh();
@@ -98,7 +98,7 @@ export function ProScreen({ onBack }: Props) {
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
-      {active ? null : IAP_ENABLED && iap.loading && !selected ? (
+      {active ? null : iapEnabledOnThisDevice() && iap.loading && !selected ? (
         <View style={styles.cta}>
           <Text style={styles.ctaText}>{t('pro.priceLoading')}</Text>
         </View>
@@ -126,11 +126,11 @@ export function ProScreen({ onBack }: Props) {
       ) : (
         <View style={styles.cta}>
           <Text style={styles.ctaText}>
-            {IAP_ENABLED ? t('pro.priceUnavailable') : t('pro.soon')}
+            {iapEnabledOnThisDevice() ? t('pro.priceUnavailable') : t('pro.soon')}
           </Text>
         </View>
       )}
-      {active || !IAP_ENABLED ? null : (
+      {active || !iapEnabledOnThisDevice() ? null : (
         <Pressable
           accessibilityRole="button"
           onPress={async () => {
@@ -147,7 +147,7 @@ export function ProScreen({ onBack }: Props) {
         </Pressable>
       )}
       <Text style={styles.fine}>
-        {IAP_ENABLED ? t('pro.fineOn') : t('pro.fineOff')}
+        {iapEnabledOnThisDevice() ? t('pro.fineOn') : t('pro.fineOff')}
       </Text>
     </ScrollView>
   );

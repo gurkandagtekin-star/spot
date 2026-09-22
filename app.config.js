@@ -11,6 +11,11 @@ module.exports = ({ config }) => {
     extra: {
       ...(config.extra || {}),
       googleWebClientId: GOOGLE_WEB_CLIENT_ID,
+      rcGoogleApiKey: process.env.EXPO_PUBLIC_RC_GOOGLE_API_KEY || '',
+      rcAppleApiKey: process.env.EXPO_PUBLIC_RC_APPLE_API_KEY || '',
+      rcEntitlement: process.env.EXPO_PUBLIC_RC_ENTITLEMENT || 'pro',
+      iapMonthlyId: process.env.EXPO_PUBLIC_IAP_MONTHLY_ID || 'markdate_pro_monthly',
+      iapYearlyId: process.env.EXPO_PUBLIC_IAP_YEARLY_ID || 'markdate_pro_yearly',
     },
     android: {
       ...(config.android || {}),

@@ -24,6 +24,7 @@ import {
   filterPinsByRange,
   formatDistance,
   formatMeetAt,
+  liveChatWith,
   pinQuotaLabel,
   type PinRange,
 } from '../utils';
@@ -250,6 +251,10 @@ export function MapScreen({
         (r) => r.pinId === selected.id && r.fromId === spot.meId,
       )
     : undefined;
+  const pairChat =
+    selected && !mine
+      ? liveChatWith(spot.chats, spot.meId, selected.authorId)
+      : undefined;
   const incoming = selected && mine
     ? spot.requests
         .filter((r) => r.pinId === selected.id)
@@ -301,14 +306,16 @@ export function MapScreen({
       <View style={styles.top}>
         <View style={styles.topRow}>
           <View style={{ flex: 1, paddingRight: 8 }}>
-            <Text style={styles.hello}>{t('map.hello', { name: spot.me.name })}</Text>
+            <Text style={styles.hello} numberOfLines={1}>
+              {t('map.hello', { name: spot.me.name })}
+            </Text>
             <Text style={styles.brand}>{t('map.brand')}</Text>
           </View>
           <LiveClock />
         </View>
         <RadiusChips
           value={range}
-          locked={pro.isPro ? [] : ['area', 'all']}
+          locked={pro.isPro ? [] : ['all']}
           onChange={(next) => {
             if (!pro.canUseRange(next)) {
               onOpenPro();
@@ -366,12 +373,15 @@ export function MapScreen({
         accessibilityLabel={t('map.locate')}
         style={styles.locate}
         onPress={() => {
-          if (!spot.hasGps) {
-            flash(t('map.needGps'));
-            return;
-          }
-          setLookAt(null);
-          setFollowToken((n) => n + 1);
+          void (async () => {
+            const ok = await spot.refreshGps();
+            if (!ok) {
+              flash(t('map.gpsDenied'));
+              return;
+            }
+            setLookAt(null);
+            setFollowToken((n) => n + 1);
+          })();
         }}
       >
         <LocateIcon color={colors.ink} size={22} />
@@ -467,13 +477,16 @@ export function MapScreen({
         mine={!!mine}
         distance={distance}
         myRequest={myRequest}
+        alreadyChatId={pairChat?.id}
         incoming={incoming}
         onClose={() => setSelectedId(null)}
         onOpenChat={() => {
           if (!selected) return;
-          const chat = spot.chats.find(
-            (c) => c.pinId === selected.id && c.memberIds.includes(spot.meId),
-          );
+          const chat =
+            pairChat ||
+            spot.chats.find(
+              (c) => c.pinId === selected.id && c.memberIds.includes(spot.meId),
+            );
           if (chat) {
             setSelectedId(null);
             onOpenChat(chat.id);
@@ -481,10 +494,22 @@ export function MapScreen({
         }}
         onJoin={async () => {
           if (!selected) return null;
+          if (pairChat) {
+            setSelectedId(null);
+            flash(t('chats.alreadyOpen'));
+            onOpenChat(pairChat.id);
+            return null;
+          }
           const res = await spot.sendJoin(selected.id);
           if (!res.ok) {
             flash(res.reason);
             return res.reason;
+          }
+          if (res.chatId) {
+            setSelectedId(null);
+            flash(t('chats.alreadyOpen'));
+            onOpenChat(res.chatId);
+            return null;
           }
           flash(t('map.joinSent'));
           return null;
@@ -605,14 +630,14 @@ const createStyles = (colors: ColorTokens) =>
     left: 24,
     right: 24,
     bottom: 96,
-    backgroundColor: colors.paper,
+    backgroundColor: 'rgba(12, 9, 22, 0.92)',
     borderRadius: radius.md,
     padding: 16,
     borderWidth: 1,
-    borderColor: colors.line,
+    borderColor: 'rgba(255,255,255,0.16)',
   },
-  emptyTitle: { fontWeight: '800', color: colors.ink, fontSize: 16 },
-  emptyText: { color: colors.muted, marginTop: 6, lineHeight: 20 },
+  emptyTitle: { fontWeight: '800', color: '#fff', fontSize: 16 },
+  emptyText: { color: 'rgba(255,255,255,0.86)', marginTop: 6, lineHeight: 22 },
   fab: {
     position: 'absolute',
     bottom: 16,
@@ -635,10 +660,12 @@ const createStyles = (colors: ColorTokens) =>
     top: 124,
     left: 24,
     right: 24,
-    backgroundColor: colors.ink,
+    backgroundColor: 'rgba(12, 9, 22, 0.94)',
     borderRadius: radius.md,
     padding: 12,
     zIndex: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.14)',
   },
-  toastText: { color: '#fff', textAlign: 'center', fontWeight: '700' },
+  toastText: { color: '#fff', textAlign: 'center', fontWeight: '700', lineHeight: 20 },
 });

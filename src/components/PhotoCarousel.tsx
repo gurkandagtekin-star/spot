@@ -18,6 +18,7 @@ type Props = {
   name?: string;
   topInset?: number;
   onLongPress?: () => void;
+  onIndexChange?: (index: number) => void;
 };
 
 export function PhotoCarousel({
@@ -26,12 +27,17 @@ export function PhotoCarousel({
   name,
   topInset = 0,
   onLongPress,
+  onIndexChange,
 }: Props) {
   const [index, setIndex] = useState(0);
   const [width, setWidth] = useState(0);
   const scroller = useRef<ScrollView>(null);
   const n = Math.max(uris.length, 1);
   const i = Math.min(index, n - 1);
+
+  useEffect(() => {
+    onIndexChange?.(i);
+  }, [i, onIndexChange]);
 
   useEffect(() => {
     setIndex(0);

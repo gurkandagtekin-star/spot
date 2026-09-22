@@ -39,7 +39,9 @@ import {
   displayName,
   GENDER_OPTIONS,
   atHandle,
+  liveChatWith,
   normalizeHandle,
+  pendingPairRequest,
   pinKindLabel,
   splitFullName,
   usernameOf,
@@ -72,6 +74,7 @@ export function ProfileScreen({ onOpenPro, userId, pinId, onBack, onShowOnMap }:
   const [draft, setDraft] = useState('');
   const [toast, setToast] = useState<string | null>(null);
   const [helloBusy, setHelloBusy] = useState(false);
+  const [heroIndex, setHeroIndex] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
 
   const isOwnProfile = !userId || userId === spot.meId || userId === spot.me?.id;
@@ -117,22 +120,21 @@ export function ProfileScreen({ onOpenPro, userId, pinId, onBack, onShowOnMap }:
   const iFollow = Boolean(spot.me.followingIds?.includes(person?.id || ''));
   const helloPending = Boolean(
     person &&
-      spot.requests.some(
-        (r) =>
-          r.pinId === 'hello' &&
-          r.status === 'pending' &&
-          r.fromId === spot.meId &&
-          r.toId === person.id,
+      pendingPairRequest(
+        spot.requests,
+        [...spot.live, ...spot.pins],
+        spot.meId,
+        person.id,
       ),
   );
+  const pairChat = person
+    ? liveChatWith(spot.chats, spot.meId, person.id)
+    : undefined;
   const vibeNote = vibeFrom(person);
   const places = useMemo(() => groupPlaces(marks), [marks]);
   const posts = feed;
   const gallery = useMemo(
-    () =>
-      galleryUrls(person?.photoUrl, person?.photos, marks, person?.bio)
-        .map((item) => getFormattedImageUrl(item) || '')
-        .filter(Boolean),
+    () => galleryUrls(person?.photoUrl, person?.photos, marks, person?.bio),
     [person?.photoUrl, person?.photos, person?.bio, marks],
   );
   const heroH = Math.max(300, Math.min(Math.round(winH * 0.48), 460));
@@ -188,6 +190,10 @@ export function ProfileScreen({ onOpenPro, userId, pinId, onBack, onShowOnMap }:
 
   const openHello = async () => {
     if (isOwnProfile || !person || helloBusy) return;
+    if (pairChat) {
+      onOpenChat?.(pairChat.id);
+      return;
+    }
     setHelloBusy(true);
     const res = await spot.startHello(person.id);
     setHelloBusy(false);
@@ -195,11 +201,14 @@ export function ProfileScreen({ onOpenPro, userId, pinId, onBack, onShowOnMap }:
       flash(res.reason);
       return;
     }
-    if (res.pending || !res.chatId) {
-      flash(t('profile.helloSent'));
+    if (res.chatId) {
+      flash(t('chats.alreadyOpen'));
+      onOpenChat?.(res.chatId);
       return;
     }
-    onOpenChat?.(res.chatId);
+    if (res.pending) {
+      flash(t('profile.helloSent'));
+    }
   };
 
   const openPlace = (item: { id: string; live?: boolean }) => {
@@ -273,25 +282,46 @@ export function ProfileScreen({ onOpenPro, userId, pinId, onBack, onShowOnMap }:
             height={heroH}
             topInset={8}
             onLongPress={() => setPeek(true)}
+            onIndexChange={setHeroIndex}
           />
           <View style={styles.headerButtons} pointerEvents="box-none">
             {chrome.camera ? (
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={t('profile.add')}
-                style={styles.coverChip}
-                onPress={() =>
-                  void changePhoto(
-                    spot,
-                    person.photos?.length || (person.photoUrl ? 1 : 0),
-                    showAlert,
-                    t,
-                  )
-                }
-                hitSlop={8}
-              >
-                <Text style={styles.coverChipText}>{t('profile.add')}</Text>
-              </Pressable>
+              <View style={styles.coverActions}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={t('profile.add')}
+                  style={styles.coverChip}
+                  onPress={() =>
+                    void changePhoto(
+                      spot,
+                      person.photos?.length || (person.photoUrl ? 1 : 0),
+                      showAlert,
+                      t,
+                    )
+                  }
+                  hitSlop={8}
+                >
+                  <Text style={styles.coverChipText}>{t('profile.add')}</Text>
+                </Pressable>
+                {gallery.length ? (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={t('profile.removePhoto')}
+                    style={styles.coverChip}
+                    onPress={() =>
+                      void removePhotoAt(
+                        spot,
+                        gallery[Math.min(heroIndex, gallery.length - 1)],
+                        showAlert,
+                        t,
+                      )
+                    }
+                    hitSlop={8}
+                  >
+                    <Text style={styles.coverChipText}>{t('profile.remove')}</Text>
+                  </Pressable>
+                ) : null}
+              </View>
             ) : (
               <Pressable
                 accessibilityRole="button"
@@ -392,7 +422,13 @@ export function ProfileScreen({ onOpenPro, userId, pinId, onBack, onShowOnMap }:
               </Pressable>
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel={t('profile.hello')}
+                accessibilityLabel={
+                  pairChat
+                    ? t('pin.goChat')
+                    : helloPending
+                      ? t('profile.helloWait')
+                      : t('profile.hello')
+                }
                 style={[styles.helloChip, helloBusy && { opacity: 0.5 }]}
                 onPress={() => void openHello()}
               >
@@ -401,7 +437,13 @@ export function ProfileScreen({ onOpenPro, userId, pinId, onBack, onShowOnMap }:
                   <View style={styles.helloTail} />
                 </View>
                 <Text style={styles.helloTxt}>
-                  {helloBusy ? '…' : helloPending ? t('profile.helloWait') : t('profile.hello')}
+                  {helloBusy
+                    ? '…'
+                    : pairChat
+                      ? t('pin.goChat')
+                      : helloPending
+                        ? t('profile.helloWait')
+                        : t('profile.hello')}
                 </Text>
               </Pressable>
             </View>
@@ -702,6 +744,30 @@ async function changePhoto(
       message: err instanceof Error ? err.message : t('profile.photoPickFail'),
     });
   }
+}
+
+function removePhotoAt(
+  spot: ReturnType<typeof useSpot>,
+  url: string | undefined,
+  showAlert: (options: AlertOptions) => void,
+  t: (key: string) => string,
+) {
+  if (!url) return;
+  showAlert({
+    title: t('profile.removePhoto'),
+    message: t('profile.removePhotoBody'),
+    confirmText: t('profile.remove'),
+    cancelText: t('common.cancel'),
+    type: 'danger',
+    onConfirm: () => {
+      void (async () => {
+        const res = await spot.removePhoto(url);
+        if (!res.ok) {
+          showAlert({ title: t('profile.removePhoto'), message: res.reason });
+        }
+      })();
+    },
+  });
 }
 
 function confirmDelete(

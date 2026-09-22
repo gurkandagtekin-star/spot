@@ -1,4 +1,4 @@
-import type { Gender, Pin, PinKind } from './types';
+import type { ChatThread, Gender, JoinRequest, Pin, PinKind } from './types';
 import { FREE_DAILY_PINS } from './pro/limits';
 import i18n from './i18n/i18n';
 
@@ -305,4 +305,41 @@ export function normalizeHandle(raw: string) {
   if (!h) return '';
   if (!/^[a-z0-9._]{2,30}$/.test(h)) return null;
   return h;
+}
+
+export function liveChatWith(
+  chats: ChatThread[] | undefined,
+  meId: string,
+  otherId: string,
+) {
+  if (!meId || !otherId || meId === otherId) return undefined;
+  const t = Date.now();
+  const open = (chats || []).filter(
+    (c) =>
+      (c.memberIds || []).includes(meId) &&
+      (c.memberIds || []).includes(otherId) &&
+      (!c.closesAt || c.closesAt > t),
+  );
+  return open.find((c) => (c.memberIds || []).length === 2) || open[0];
+}
+
+export function pendingPairRequest(
+  requests: JoinRequest[] | undefined,
+  pins: { id: string; authorId: string }[] | undefined,
+  meId: string,
+  otherId: string,
+) {
+  if (!meId || !otherId || meId === otherId) return undefined;
+  return (requests || []).find((r) => {
+    if (r.status !== 'pending') return false;
+    if (r.pinId === 'hello') {
+      return (
+        (r.fromId === meId && r.toId === otherId) ||
+        (r.fromId === otherId && r.toId === meId)
+      );
+    }
+    const host = (pins || []).find((p) => p.id === r.pinId)?.authorId;
+    if (!host) return false;
+    return (r.fromId === meId && host === otherId) || (r.fromId === otherId && host === meId);
+  });
 }

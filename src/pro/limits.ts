@@ -6,7 +6,7 @@ export const PRO_PIN_MS = 16 * 60 * 60 * 1000;
 export const PRO_CHAT_MS = 24 * 60 * 60 * 1000;
 
 export function isProRange(range: string) {
-  return range === 'area' || range === 'all';
+  return range === 'all';
 }
 
 export function dailyPinLimit(isPro: boolean, adMarksToday = 0) {

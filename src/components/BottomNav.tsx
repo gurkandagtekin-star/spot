@@ -30,7 +30,7 @@ export function BottomNav({ current, onChange, chatBadge = 0 }: Props) {
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   return (
-    <View style={[styles.wrap, { paddingBottom: Math.max(insets.bottom - 6, 6) }]}>
+    <View style={[styles.wrap, { paddingBottom: insets.bottom }]}>
       {items.map((item) => {
         const active = current === item.key;
         const color = active ? colors.ink : colors.muted;
@@ -65,14 +65,14 @@ const createStyles = (colors: ColorTokens) =>
       borderTopWidth: StyleSheet.hairlineWidth,
       borderTopColor: colors.line,
       paddingHorizontal: 8,
-      paddingTop: 6,
+      paddingTop: 8,
     },
     item: {
       flex: 1,
       alignItems: 'center',
       position: 'relative',
       gap: 2,
-      paddingVertical: 2,
+      paddingVertical: 4,
     },
     label: {
       fontSize: 10,

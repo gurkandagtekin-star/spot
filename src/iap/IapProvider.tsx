@@ -8,13 +8,14 @@ import {
 } from 'react';
 import type { CustomerInfo } from 'react-native-purchases';
 import { useSpot } from '../store/SpotContext';
-import { IAP_ENABLED } from '../iap';
+import { iapEnabledOnThisDevice } from '../iap';
 import {
   configurePurchases,
   fetchStorePlans,
   hasProEntitlement,
   identifyPurchaser,
   listenCustomerInfo,
+  proSyncFromCustomerInfo,
   purchaseStorePlan,
   readCustomerInfo,
   restorePurchases,
@@ -56,10 +57,14 @@ export function IapProvider({ children }: { children: ReactNode }) {
 
   const applyInfo = (info: CustomerInfo | null) => {
     setHasPro(hasProEntitlement(info));
+    const payload = proSyncFromCustomerInfo(info);
+    if (payload && spot.signedIn) {
+      void spot.syncStorePro(payload);
+    }
   };
 
   const refresh = async () => {
-    if (!IAP_ENABLED) {
+    if (!iapEnabledOnThisDevice()) {
       setPlans([]);
       setReady(true);
       return;
@@ -88,7 +93,7 @@ export function IapProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     void refresh();
-    if (!IAP_ENABLED) return undefined;
+    if (!iapEnabledOnThisDevice()) return undefined;
     const onInfo = (info: CustomerInfo) => applyInfo(info);
     const remove = listenCustomerInfo(onInfo);
     return () => {
@@ -97,7 +102,7 @@ export function IapProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    if (!IAP_ENABLED) return;
+    if (!iapEnabledOnThisDevice()) return;
     void identifyPurchaser(spot.signedIn ? spot.meId : null).then(() => {
       void readCustomerInfo().then(applyInfo);
     });

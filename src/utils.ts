@@ -263,16 +263,17 @@ export function livePins(pins: Pin[], now = Date.now()) {
 }
 
 export function formatMeetAt(ts: number, now = Date.now()) {
+  const loc = String(i18n.language || '').startsWith('tr') ? 'tr-TR' : 'en-US';
   const d = new Date(ts);
-  const time = d.toLocaleTimeString('tr-TR', {
+  const time = d.toLocaleTimeString(loc, {
     hour: '2-digit',
     minute: '2-digit',
   });
   const day = startOfDay(ts);
   const today = startOfDay(now);
-  if (day === today) return `bugün ${time}`;
-  if (day === today + 86400000) return `yarın ${time}`;
-  const date = d.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' });
+  if (day === today) return `${i18n.t('time.today')} ${time}`;
+  if (day === today + 86400000) return `${i18n.t('time.tomorrow')} ${time}`;
+  const date = d.toLocaleDateString(loc, { day: 'numeric', month: 'short' });
   return `${date} ${time}`;
 }
 

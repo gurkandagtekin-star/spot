@@ -9,6 +9,7 @@ import {
 } from 'react';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { usePro } from '../pro/usePro';
+import { useTranslation } from 'react-i18next';
 
 type AdsValue = {
   adsEnabled: boolean;
@@ -19,6 +20,7 @@ type AdsValue = {
 const AdsContext = createContext<AdsValue | null>(null);
 
 export function AdsProvider({ children }: { children: ReactNode }) {
+  const { t } = useTranslation();
   const { adsEnabled } = usePro();
   const [rewardOpen, setRewardOpen] = useState(false);
   const [interOpen, setInterOpen] = useState(false);
@@ -85,15 +87,15 @@ export function AdsProvider({ children }: { children: ReactNode }) {
       <Modal visible={rewardOpen} transparent animationType="fade">
         <View style={styles.shade}>
           <View style={styles.card}>
-            <Text style={styles.kicker}>Ödüllü reklam</Text>
-            <Text style={styles.title}>Kısa bir reklam</Text>
+            <Text style={styles.kicker}>{t('ads.rewardedKicker')}</Text>
+            <Text style={styles.title}>{t('ads.rewardedTitle')}</Text>
             <Text style={styles.body}>
               {seconds > 0
-                ? `${seconds} sn sonra +1 mark hakkı. AdMob bağlanınca gerçek reklam burada oynar.`
-                : 'Hak tanındı.'}
+                ? t('ads.rewardedWait', { seconds })
+                : t('ads.rewardedDone')}
             </Text>
             <Pressable onPress={() => finishReward(false)} style={styles.ghost}>
-              <Text style={styles.ghostTxt}>Vazgeç</Text>
+              <Text style={styles.ghostTxt}>{t('ads.skip')}</Text>
             </Pressable>
           </View>
         </View>
@@ -101,11 +103,11 @@ export function AdsProvider({ children }: { children: ReactNode }) {
       <Modal visible={interOpen} transparent animationType="fade">
         <View style={styles.shade}>
           <View style={styles.card}>
-            <Text style={styles.kicker}>Reklam</Text>
+            <Text style={styles.kicker}>{t('ads.kicker')}</Text>
             <Text style={styles.title}>Mark Date</Text>
-            <Text style={styles.body}>Geçiş reklamı. Pro’da bu katman yok.</Text>
+            <Text style={styles.body}>{t('ads.interBody')}</Text>
             <Pressable onPress={finishInter} style={styles.ghost}>
-              <Text style={styles.ghostTxt}>Kapat</Text>
+              <Text style={styles.ghostTxt}>{t('common.close')}</Text>
             </Pressable>
           </View>
         </View>
@@ -122,11 +124,12 @@ export function useAds() {
 
 export function AdBanner() {
   const { adsEnabled } = useAds();
+  const { t } = useTranslation();
   if (!adsEnabled) return null;
   return (
     <View style={styles.banner} pointerEvents="none">
-      <Text style={styles.bannerKicker}>Reklam</Text>
-      <Text style={styles.bannerTxt}>Pro ile reklamsız harita</Text>
+      <Text style={styles.bannerKicker}>{t('ads.kicker')}</Text>
+      <Text style={styles.bannerTxt}>{t('ads.banner')}</Text>
     </View>
   );
 }

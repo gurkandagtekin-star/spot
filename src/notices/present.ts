@@ -1,5 +1,6 @@
 import { AppState, Platform } from 'react-native';
 import type { AppNotice } from '../types';
+import i18n from '../i18n/i18n';
 
 let handlerReady = false;
 let remotePushReady = false;
@@ -42,7 +43,7 @@ export async function prepareNotices() {
     }
     if (Platform.OS === 'android') {
       await Notifications.setNotificationChannelAsync('mark-date', {
-        name: 'Eşleşme',
+        name: i18n.t('chats.title'),
         importance: Notifications.AndroidImportance.HIGH,
         vibrationPattern: [0, 180, 80, 180],
         lightColor: '#E35D4A',

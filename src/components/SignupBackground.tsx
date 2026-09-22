@@ -1,123 +1,50 @@
-import { useEffect, useRef, useState, createElement } from 'react';
-import { Animated, Easing, Platform, StyleSheet, View } from 'react-native';
-import { Asset } from 'expo-asset';
+import { useEffect, type ReactNode } from 'react';
+import { Platform, StyleSheet, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useVideoPlayer, VideoView } from 'expo-video';
 
-const packed = require('../../assets/arkaplan.mp4');
+const assetId = require('../../assets/arkaplan.mp4');
 
-function WebLoopVideo({ uri }: { uri: string }) {
-  return createElement('video', {
-    src: uri,
-    autoPlay: true,
-    muted: true,
-    loop: true,
-    playsInline: true,
-    controls: false,
-    style: {
-      position: 'absolute',
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
-      width: '100%',
-      height: '100%',
-      objectFit: 'cover',
-    },
+export function SignupBackground({ children }: { children: ReactNode }) {
+  const player = useVideoPlayer({ assetId }, (next) => {
+    next.loop = true;
+    next.muted = true;
+    next.play();
   });
-}
-
-function NativeGlow() {
-  const drift = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    const loop = Animated.loop(
-      Animated.timing(drift, {
-        toValue: 1,
-        duration: 9000,
-        easing: Easing.inOut(Easing.sin),
-        useNativeDriver: true,
-      }),
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [drift]);
-
-  const shift = drift.interpolate({
-    inputRange: [0, 1],
-    outputRange: [-40, 48],
-  });
-  const spin = drift.interpolate({
-    inputRange: [0, 1],
-    outputRange: ['0deg', '28deg'],
-  });
+    player.loop = true;
+    player.muted = true;
+    player.play();
+  }, [player]);
 
   return (
-    <View style={styles.wrap} pointerEvents="none">
-      <Animated.View
-        style={[
-          styles.blob,
-          { transform: [{ translateX: shift }, { translateY: shift }, { rotate: spin }] },
-        ]}
-      >
-        <LinearGradient
-          colors={['#1A0A12', '#FF5E97', '#3A1528', '#0A0A0A']}
-          start={{ x: 0.1, y: 0 }}
-          end={{ x: 0.9, y: 1 }}
-          style={StyleSheet.absoluteFill}
-        />
-      </Animated.View>
+    <View style={styles.fill}>
+      <VideoView
+        player={player}
+        style={styles.video}
+        contentFit="cover"
+        nativeControls={false}
+        playsInline
+        {...(Platform.OS === 'android' ? { surfaceType: 'textureView' as const } : {})}
+      />
       <LinearGradient
-        colors={['rgba(10,10,10,0.35)', 'rgba(10,10,10,0.82)']}
+        colors={['rgba(18, 8, 28, 0.22)', 'rgba(18, 8, 28, 0.48)']}
+        pointerEvents="none"
         style={styles.dim}
       />
-    </View>
-  );
-}
-
-export function SignupBackground() {
-  const [uri, setUri] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (Platform.OS !== 'web') return;
-    let live = true;
-    const asset = Asset.fromModule(packed);
-    void asset.downloadAsync().then(() => {
-      if (live) setUri(asset.localUri || asset.uri);
-    });
-    return () => {
-      live = false;
-    };
-  }, []);
-
-  if (Platform.OS !== 'web') return <NativeGlow />;
-
-  return (
-    <View style={styles.wrap} pointerEvents="none">
-      {uri ? <WebLoopVideo uri={uri} /> : <NativeGlow />}
-      <View style={styles.webDim} />
+      <View style={styles.content}>{children}</View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  wrap: {
+  fill: { flex: 1, backgroundColor: '#12081C' },
+  video: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: '#0A0A0A',
-    overflow: 'hidden',
-  },
-  blob: {
-    position: 'absolute',
-    width: '140%',
-    height: '140%',
-    left: '-20%',
-    top: '-18%',
-    opacity: 0.55,
   },
   dim: {
     ...StyleSheet.absoluteFillObject,
   },
-  webDim: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0, 0, 0, 0.65)',
-  },
+  content: { flex: 1 },
 });

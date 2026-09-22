@@ -1,4 +1,5 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useTranslation } from 'react-i18next';
 import { getApiUrl } from '../api';
 import { radius, type ColorTokens } from '../theme';
 import { useThemedStyles } from '../theme/useThemedStyles';
@@ -11,18 +12,19 @@ export function ConnectionBanner({
   onRetry: () => void;
 }) {
   const styles = useThemedStyles(createStyles);
+  const { t } = useTranslation();
   if (!visible) return null;
   return (
     <View style={styles.wrap} pointerEvents="box-none">
       <View style={styles.card}>
-        <Text style={styles.title}>Sunucuya ulaşılamadı</Text>
+        <Text style={styles.title}>{t('conn.title')}</Text>
         <Text style={styles.body}>
           {typeof __DEV__ !== 'undefined' && __DEV__
-            ? `Yerel API: ${getApiUrl()}. Telefon ve PC aynı Wi‑Fi’de olmalı.`
-            : 'İnternetini kontrol et. Mark ve sohbet şu an güncellenmiyor.'}
+            ? t('conn.bodyDev', { url: getApiUrl() })
+            : t('conn.body')}
         </Text>
         <Pressable onPress={onRetry} style={styles.btn}>
-          <Text style={styles.btnText}>Tekrar dene</Text>
+          <Text style={styles.btnText}>{t('conn.retry')}</Text>
         </Pressable>
       </View>
     </View>

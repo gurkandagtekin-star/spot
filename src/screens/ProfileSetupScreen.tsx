@@ -41,9 +41,14 @@ export function ProfileSetupScreen() {
   const [year, setYear] = useState(born.year);
   const [gender, setGender] = useState<Gender | ''>(spot.me.gender || '');
   const [handle, setHandle] = useState(spot.me.username || '');
-  const [bio, setBio] = useState(
-    spot.me.bio === 'Yüz yüze tanışmayı seviyorum.' ? '' : spot.me.bio,
-  );
+  const defaultBio = t('setup.defaultBio');
+  const [bio, setBio] = useState(() => {
+    const current = spot.me.bio;
+    if (!current || current === 'Yüz yüze tanışmayı seviyorum.' || current === defaultBio) {
+      return '';
+    }
+    return current;
+  });
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [aliasFocus, setAliasFocus] = useState(false);
@@ -59,24 +64,24 @@ export function ProfileSetupScreen() {
   const saveIdentity = async () => {
     const name = alias.trim();
     if (name.length < 2) {
-      setError('Adın veya rumuzun en az 2 karakter olsun.');
+      setError(t('setup.aliasMin'));
       return false;
     }
     const iso = birthDate;
     if (!iso || age === null) {
-      setError('Geçerli bir doğum tarihi yaz.');
+      setError(t('profile.validBirth'));
       return false;
     }
     if (age < 18) {
-      setError('Devam etmek için 18 yaşından büyük olmalısın.');
+      setError(t('setup.under18'));
       return false;
     }
     if (age > 99) {
-      setError('Yaş 18–99 arasında olmalı.');
+      setError(t('profile.ageRange'));
       return false;
     }
     if (!gender) {
-      setError('Cinsiyetini seç.');
+      setError(t('setup.pickGender'));
       return false;
     }
     await spot.setMyProfile({
@@ -98,7 +103,7 @@ export function ProfileSetupScreen() {
       const res = await spot.uploadPhoto(picked.dataUrl, picked.uri);
       if (!res.ok) setError(res.reason);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Fotoğraf seçilemedi.');
+      setError(err instanceof Error ? err.message : t('profile.photoPickFail'));
     }
   };
 
@@ -110,7 +115,7 @@ export function ProfileSetupScreen() {
         const ok = await saveIdentity();
         if (ok) setStep(1);
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Kaydedilemedi.');
+        setError(err instanceof Error ? err.message : t('profile.saveFail'));
       } finally {
         setBusy(false);
       }
@@ -122,7 +127,7 @@ export function ProfileSetupScreen() {
     }
     const next = normalizeHandle(handle);
     if (next === null) {
-      setError('Kullanıcı adı harf, rakam, nokta veya alt çizgi; en fazla 30.');
+      setError(t('setup.usernameRule'));
       return;
     }
     setBusy(true);
@@ -137,19 +142,19 @@ export function ProfileSetupScreen() {
         ...(iso ? { birthDate: iso } : {}),
         gender: gender || undefined,
         ...(next ? { username: next } : {}),
-        bio: bio.trim() || 'Yüz yüze tanışmayı seviyorum.',
+        bio: bio.trim() || t('setup.defaultBio'),
       });
       const res = await spot.finishOnboarding();
       if (!res.ok) setError(res.reason);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Kaydedilemedi.');
+      setError(err instanceof Error ? err.message : t('profile.saveFail'));
     } finally {
       setBusy(false);
     }
   };
 
   const ctaLabel =
-    busy ? 'Kaydediliyor…' : step === 2 ? 'Haritaya geç' : 'Devam Et';
+    busy ? t('setup.saving') : step === 2 ? t('setup.toMap') : t('setup.continue');
   const ctaReady = step === 0 ? identityReady && !busy : !busy;
 
   return (
@@ -172,17 +177,17 @@ export function ProfileSetupScreen() {
             style={[styles.progressFill, { width: `${((step + 1) / STEPS) * 100}%` }]}
           />
         </View>
-        <Text style={styles.kicker}>Adım {step + 1} / {STEPS}</Text>
+        <Text style={styles.kicker}>{t('setup.step', { n: step + 1, total: STEPS })}</Text>
 
         {step === 0 ? (
           <>
-            <Text style={styles.title}>Seni tanıyalım</Text>
-            <Text style={styles.lead}>Kartında görünecek ad, yaş ve cinsiyet.</Text>
-            <Text style={styles.label}>Adın veya rumuzun</Text>
+            <Text style={styles.title}>{t('setup.titleName')}</Text>
+            <Text style={styles.lead}>{t('setup.leadName')}</Text>
+            <Text style={styles.label}>{t('setup.alias')}</Text>
             <TextInput
               value={alias}
               onChangeText={setAlias}
-              placeholder="Adın veya rumuzun"
+              placeholder={t('setup.alias')}
               placeholderTextColor="rgba(255,255,255,0.28)"
               autoCapitalize="words"
               autoCorrect={false}
@@ -190,12 +195,12 @@ export function ProfileSetupScreen() {
               onBlur={() => setAliasFocus(false)}
               style={[styles.underline, aliasFocus && styles.underlineOn]}
             />
-            <Text style={styles.label}>Doğum tarihin</Text>
+            <Text style={styles.label}>{t('setup.birth')}</Text>
             <View style={styles.dateRow}>
               <TextInput
                 value={day}
                 onChangeText={(v) => setDay(v.replace(/[^\d]/g, '').slice(0, 2))}
-                placeholder="GG"
+                placeholder={t('setup.phDay')}
                 placeholderTextColor="rgba(255,255,255,0.28)"
                 keyboardType="number-pad"
                 maxLength={2}
@@ -205,7 +210,7 @@ export function ProfileSetupScreen() {
               <TextInput
                 value={month}
                 onChangeText={(v) => setMonth(v.replace(/[^\d]/g, '').slice(0, 2))}
-                placeholder="AA"
+                placeholder={t('setup.phMonth')}
                 placeholderTextColor="rgba(255,255,255,0.28)"
                 keyboardType="number-pad"
                 maxLength={2}
@@ -215,7 +220,7 @@ export function ProfileSetupScreen() {
               <TextInput
                 value={year}
                 onChangeText={(v) => setYear(v.replace(/[^\d]/g, '').slice(0, 4))}
-                placeholder="YYYY"
+                placeholder={t('setup.phYear')}
                 placeholderTextColor="rgba(255,255,255,0.28)"
                 keyboardType="number-pad"
                 maxLength={4}
@@ -223,11 +228,11 @@ export function ProfileSetupScreen() {
               />
             </View>
             {age !== null && age >= 18 && age <= 99 ? (
-              <Text style={styles.ageHint}>{age} yaşındasın.</Text>
+              <Text style={styles.ageHint}>{t('setup.ageNow', { age })}</Text>
             ) : (
-              <Text style={styles.ageHint}>Yaşın doğum tarihinden hesaplanır.</Text>
+              <Text style={styles.ageHint}>{t('setup.ageFromBirth')}</Text>
             )}
-            <Text style={styles.label}>Cinsiyet</Text>
+            <Text style={styles.label}>{t('setup.gender')}</Text>
             <View style={styles.genderGrid}>
               {GENDER_OPTIONS.map((opt) => {
                 const on = gender === opt.id;
@@ -251,22 +256,20 @@ export function ProfileSetupScreen() {
 
         {step === 1 ? (
           <>
-            <Text style={styles.title}>Yüzün görünsün</Text>
-            <Text style={styles.lead}>
-              Karşı taraf seni tanısın. Galeriden bir kare seç; Google fotoğrafın da durur.
-            </Text>
+            <Text style={styles.title}>{t('setup.titleFace')}</Text>
+            <Text style={styles.lead}>{t('setup.leadFace')}</Text>
             <Pressable onPress={() => void photo()} style={styles.photoWrap}>
               <Avatar name={alias || spot.me.name} uri={spot.me.photoUrl} size={120} />
-              <Text style={styles.photoHint}>Galeriden seç</Text>
+              <Text style={styles.photoHint}>{t('setup.pickGallery')}</Text>
             </Pressable>
           </>
         ) : null}
 
         {step === 2 ? (
           <>
-            <Text style={styles.title}>Son dokunuş</Text>
-            <Text style={styles.lead}>Kullanıcı adın ve kısa bir cümle. Cümle isteğe bağlı.</Text>
-            <Text style={styles.label}>Kullanıcı adı</Text>
+            <Text style={styles.title}>{t('setup.titleLast')}</Text>
+            <Text style={styles.lead}>{t('setup.leadLast')}</Text>
+            <Text style={styles.label}>{t('setup.username')}</Text>
             <View style={styles.handleRow}>
               <Text style={styles.at}>@</Text>
               <TextInput
@@ -274,17 +277,17 @@ export function ProfileSetupScreen() {
                 onChangeText={(v) => setHandle(v.replace(/^@/, ''))}
                 autoCapitalize="none"
                 autoCorrect={false}
-                placeholder="kullaniciadi"
+                placeholder={t('setup.phHandle')}
                 placeholderTextColor="rgba(255,255,255,0.28)"
                 style={styles.handleInput}
               />
             </View>
-            <Text style={styles.ageHint}>Profilinde @kullanıcıadı olarak görünür.</Text>
-            <Text style={styles.label}>Kısa tanıtım</Text>
+            <Text style={styles.ageHint}>{t('setup.handleHint')}</Text>
+            <Text style={styles.label}>{t('setup.bio')}</Text>
             <TextInput
               value={bio}
               onChangeText={setBio}
-              placeholder="Kahve, sahil, yeni insan…"
+              placeholder={t('setup.phBio')}
               placeholderTextColor="rgba(255,255,255,0.28)"
               multiline
               style={styles.bio}
@@ -302,7 +305,7 @@ export function ProfileSetupScreen() {
                 setStep((s) => s - 1);
               }}
             >
-              <Text style={styles.skip}>Geri</Text>
+              <Text style={styles.skip}>{t('common.back')}</Text>
             </Pressable>
           ) : null}
           {step === 1 ? (
@@ -312,7 +315,7 @@ export function ProfileSetupScreen() {
                 setStep(2);
               }}
             >
-              <Text style={styles.skip}>Şimdilik geç</Text>
+              <Text style={styles.skip}>{t('setup.skip')}</Text>
             </Pressable>
           ) : null}
           <Pressable

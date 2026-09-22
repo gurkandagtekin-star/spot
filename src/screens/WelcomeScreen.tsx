@@ -2,25 +2,17 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useTranslation } from 'react-i18next';
 import { useAndroidBack } from '../hooks/useAndroidBack';
 
 const BG = '#0A0A0A';
 const GLOW = '#FF5E97';
 const MUTED = 'rgba(255,255,255,0.58)';
 
-const SLIDES = [
-  {
-    title: 'Konumunu İşaretle',
-    body: 'Bulunduğun mekanda bir Mark bırak, çevrendeki radara gir ve görünür ol.',
-  },
-  {
-    title: 'Anı Yakala',
-    body: 'Bıraktığın her Mark 2 saat boyunca aktiftir. Sadece anlık ve gerçek kişilerle karşılaşırsın.',
-  },
-  {
-    title: 'Karşılıklı Onay',
-    body: 'Biri sana selam attığında sadece sen onaylarsan sohbet başlar. Kontrol tamamen sende.',
-  },
+const SLIDE_KEYS = [
+  { title: 'welcome.s1t', body: 'welcome.s1b' },
+  { title: 'welcome.s2t', body: 'welcome.s2b' },
+  { title: 'welcome.s3t', body: 'welcome.s3b' },
 ] as const;
 
 function MarkIcon() {
@@ -62,12 +54,13 @@ function SlideIcon({ index }: { index: number }) {
 }
 
 export function WelcomeScreen({ onDone }: { onDone: () => void }) {
+  const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const [step, setStep] = useState(0);
   const pulse = useRef(new Animated.Value(0)).current;
   const fade = useRef(new Animated.Value(1)).current;
-  const last = step === SLIDES.length - 1;
-  const slide = SLIDES[step];
+  const last = step === SLIDE_KEYS.length - 1;
+  const slide = SLIDE_KEYS[step];
 
   useEffect(() => {
     const loop = Animated.loop(
@@ -112,7 +105,7 @@ export function WelcomeScreen({ onDone }: { onDone: () => void }) {
       ]}
     >
       <View style={styles.bars}>
-        {SLIDES.map((_, i) => (
+        {SLIDE_KEYS.map((_, i) => (
           <View key={i} style={styles.barTrack}>
             {i <= step ? (
               <LinearGradient
@@ -131,13 +124,13 @@ export function WelcomeScreen({ onDone }: { onDone: () => void }) {
           <Animated.View style={[styles.iconGlow, { opacity: glowOp }]} />
           <SlideIcon index={step} />
         </Animated.View>
-        <Text style={styles.title}>{slide.title}</Text>
-        <Text style={styles.body}>{slide.body}</Text>
+        <Text style={styles.title}>{t(slide.title)}</Text>
+        <Text style={styles.body}>{t(slide.body)}</Text>
       </Animated.View>
 
       <View style={styles.footer}>
         <Pressable onPress={finish} hitSlop={12} style={styles.skipHit}>
-          <Text style={styles.skip}>Atla</Text>
+          <Text style={styles.skip}>{t('welcome.skip')}</Text>
         </Pressable>
         <Pressable
           onPress={() => {
@@ -152,7 +145,7 @@ export function WelcomeScreen({ onDone }: { onDone: () => void }) {
             end={{ x: 1, y: 0.5 }}
             style={styles.cta}
           >
-            <Text style={styles.ctaText}>{last ? 'Başlayalım' : 'İlerle'}</Text>
+            <Text style={styles.ctaText}>{last ? t('welcome.start') : t('welcome.next')}</Text>
           </LinearGradient>
         </Pressable>
       </View>

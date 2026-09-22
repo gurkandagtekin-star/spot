@@ -24,7 +24,7 @@ type ThemeContextValue = {
 const ThemeContext = createContext<ThemeContextValue | null>(null);
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [scheme, setSchemeState] = useState<ThemeScheme>('light');
+  const [scheme, setSchemeState] = useState<ThemeScheme>('dark');
 
   useEffect(() => {
     void loadTheme().then((saved) => {

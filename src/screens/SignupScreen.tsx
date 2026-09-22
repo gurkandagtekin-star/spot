@@ -62,12 +62,10 @@ export function SignupScreen() {
   };
 
   return (
-    <View style={styles.page}>
-      <SignupBackground />
+    <SignupBackground>
       <View
         style={{
           flex: 1,
-          backgroundColor: 'transparent',
           justifyContent: 'space-between',
           paddingVertical: 40,
           paddingTop: insets.top + 40,
@@ -157,12 +155,11 @@ export function SignupScreen() {
           </View>
         </View>
       </Modal>
-    </View>
+    </SignupBackground>
   );
 }
 
 const styles = StyleSheet.create({
-  page: { flex: 1, backgroundColor: '#0A0A0A' },
   hero: {
     flex: 1,
     alignItems: 'center',

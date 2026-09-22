@@ -166,7 +166,7 @@ export function PinSheet({
                         </>
                       ) : (
                         <Text style={styles.handleTxt}>
-                          {request.status === 'accepted' ? 'onaylandı' : 'reddedildi'}
+                          {request.status === 'accepted' ? t('pin.accepted') : t('pin.declined')}
                         </Text>
                       )}
                     </View>
@@ -174,7 +174,7 @@ export function PinSheet({
                 )}
                 <Pressable
                   accessibilityRole="button"
-                  accessibilityLabel="Markı Sil"
+                  accessibilityLabel={t('pin.deleteMark')}
                   style={styles.danger}
                   onPress={onClosePin}
                 >
@@ -188,7 +188,7 @@ export function PinSheet({
             ) : myRequest?.status === 'pending' ? (
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel="İsteği geri çek"
+                accessibilityLabel={t('pin.withdraw')}
                 style={styles.danger}
                 onPress={() => onWithdraw?.()}
               >
@@ -219,7 +219,7 @@ export function PinSheet({
             ) : null}
             {!mine && myRequest?.status !== 'accepted' ? (
               <Text style={styles.hint}>
-                Direkt mesaj yok. Karşı taraf onaylarsa kısa bir sohbet açılır.
+                {t('pin.noDm')}
               </Text>
             ) : null}
     </DragSheet>

@@ -384,8 +384,9 @@ function PulseCard({
   onOpenProfile: () => void;
 }) {
   const styles = useThemedStyles(createStyles);
-  const joinOff = cta === 'Onay bekleniyor' || cta === 'Kadro doldu';
-  const who = pin.authorId === meId ? 'Sen' : authorName;
+  const { t } = useTranslation();
+  const joinOff = cta === t('discover.waiting') || cta === t('discover.fullCta');
+  const who = pin.authorId === meId ? t('common.you') : authorName;
 
   return (
     <Pressable onPress={onMap} style={styles.card}>

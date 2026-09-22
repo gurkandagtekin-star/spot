@@ -223,21 +223,21 @@ export function ChatScreen({ chatId, onBack, onOpenProfile }: Props) {
           </Pressable>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Profil fotoğrafı"
+            accessibilityLabel={t('chat.profilePhoto')}
             onPress={() => setPeek(true)}
           >
             <Avatar name={other?.name || 'S'} size={42} uri={other?.photoUrl} />
           </Pressable>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Profili aç"
+            accessibilityLabel={t('chat.openProfile')}
             onPress={() => {
               if (otherId) onOpenProfile?.(otherId, pin?.id);
             }}
             style={{ flex: 1 }}
           >
             <Text style={styles.name} numberOfLines={1}>
-              {other?.name ?? 'Sohbet'}
+              {other?.name ?? t('kind.chat')}
             </Text>
             <Text style={styles.note} numberOfLines={1}>
               {subtitle || t('chat.active')}
@@ -421,7 +421,8 @@ export function ChatScreen({ chatId, onBack, onOpenProfile }: Props) {
               const m = item.msg;
               const mine = m.fromId === spot.meId;
               const system = m.fromId === 'system';
-              const time = new Date(m.at).toLocaleTimeString('tr-TR', {
+              const loc = String(i18n.language || '').startsWith('tr') ? 'tr-TR' : 'en-US';
+              const time = new Date(m.at).toLocaleTimeString(loc, {
                 hour: '2-digit',
                 minute: '2-digit',
               });
@@ -430,6 +431,7 @@ export function ChatScreen({ chatId, onBack, onOpenProfile }: Props) {
                 (m.text && /^data:image\//i.test(m.text) ? m.text : '');
               const caption =
                 m.text &&
+                m.text !== t('chat.photoSentinel') &&
                 m.text !== '📷 Fotoğraf' &&
                 !/^data:image\//i.test(m.text)
                   ? m.text
@@ -490,7 +492,7 @@ export function ChatScreen({ chatId, onBack, onOpenProfile }: Props) {
       <PhotoPeek
         visible={peek}
         uri={other?.photoUrl}
-        name={other?.name ?? 'Sohbet'}
+        name={other?.name ?? t('kind.chat')}
         onClose={() => setPeek(false)}
       />
     </View>

@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
+import { useTranslation } from 'react-i18next';
 import type { ColorTokens } from '../theme';
 import { useThemedStyles } from '../theme/useThemedStyles';
 
 export function LiveClock() {
   const styles = useThemedStyles(createStyles);
+  const { i18n } = useTranslation();
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
@@ -12,12 +14,13 @@ export function LiveClock() {
     return () => clearInterval(id);
   }, []);
 
+  const loc = String(i18n.language || '').startsWith('tr') ? 'tr-TR' : 'en-US';
   const d = new Date(now);
-  const time = d.toLocaleTimeString('tr-TR', {
+  const time = d.toLocaleTimeString(loc, {
     hour: '2-digit',
     minute: '2-digit',
   });
-  const day = d.toLocaleDateString('tr-TR', {
+  const day = d.toLocaleDateString(loc, {
     weekday: 'short',
     day: 'numeric',
     month: 'short',

@@ -190,7 +190,7 @@ export function ProfileScreen({ onOpenPro, userId, pinId, onBack, onShowOnMap }:
 
   const openPlace = (item: { id: string; live?: boolean }) => {
     if (!item.live) {
-      flash('Bu mark artık haritada yok.');
+      flash(t('profile.markGone'));
       return;
     }
     onShowOnMap?.(item.id);
@@ -281,7 +281,7 @@ export function ProfileScreen({ onOpenPro, userId, pinId, onBack, onShowOnMap }:
             ) : (
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel="Geri"
+                accessibilityLabel={t('profile.back')}
                 onPress={onBack}
                 style={styles.coverChip}
                 hitSlop={8}
@@ -452,15 +452,15 @@ export function ProfileScreen({ onOpenPro, userId, pinId, onBack, onShowOnMap }:
           places.length === 0 ? (
             <Text style={[styles.meta, styles.bodyPad]}>
               {isOwnProfile
-                ? 'Mark koydukça takıldığın mekanlar burada birikir.'
-                : 'Henüz mekan yok.'}
+                ? t('profile.placesEmptyOwn')
+                : t('profile.placesEmpty')}
             </Text>
           ) : (
             places.map((item) => (
               <Pressable
                 key={item.id}
                 accessibilityRole="button"
-                accessibilityLabel={`${item.name} haritada göster`}
+                accessibilityLabel={t('profile.showOnMap', { name: item.name })}
                 style={styles.placeCard}
                 onPress={() => openPlace(item)}
               >
@@ -480,7 +480,7 @@ export function ProfileScreen({ onOpenPro, userId, pinId, onBack, onShowOnMap }:
                     </Text>
                   ) : null}
                   <Text style={styles.placeMeta}>
-                    {item.count} mark
+                    {t('profile.markCount', { count: item.count })}
                     {item.lastAt ? ` · ${wallWhen(item.lastAt)}` : ''}
                   </Text>
                 </View>
@@ -490,7 +490,7 @@ export function ProfileScreen({ onOpenPro, userId, pinId, onBack, onShowOnMap }:
         ) : (
           posts.length === 0 ? (
             <Text style={[styles.meta, styles.bodyPad]}>
-              {isOwnProfile ? 'İlk notu sen yaz. Burası tweet akışın.' : 'Henüz duvar notu yok.'}
+              {isOwnProfile ? t('profile.wallEmptyOwn') : t('profile.wallEmpty')}
             </Text>
           ) : (
             posts.map((item: WallPost) => (
@@ -512,7 +512,7 @@ export function ProfileScreen({ onOpenPro, userId, pinId, onBack, onShowOnMap }:
                     <View style={styles.tweetActions}>
                       <Pressable
                         accessibilityRole="button"
-                        accessibilityLabel="Notu sil"
+                        accessibilityLabel={t('profile.deleteNoteA11y')}
                         hitSlop={8}
                         onPress={() => void dropNote(item.id)}
                       >
@@ -768,7 +768,7 @@ function SettingsSheet({
         </Text>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Mark Date Pro"
+          accessibilityLabel={t('profile.proA11y')}
           style={pro.isPro ? styles.ghost : styles.proBtn}
           onPress={onOpenPro}
         >
@@ -856,6 +856,7 @@ function galleryUrls(
 
 function VibeSheet({ visible, onClose }: { visible: boolean; onClose: () => void }) {
   const spot = useSpot();
+  const { t } = useTranslation();
   const styles = useThemedStyles(createStyles);
   const [picked, setPicked] = useState<string[]>(spot.me.interests || []);
 
@@ -943,20 +944,20 @@ function EditSheet({ visible, onClose }: { visible: boolean; onClose: () => void
       const iso = birthDateFromParts(day, month, year);
       const n = ageFromBirthDate(iso);
       if (!iso || n === null) {
-        setFormError('Geçerli bir doğum tarihi yaz.');
+        setFormError(t('profile.validBirth'));
         return;
       }
       if (n < 18 || n > 99) {
-        setFormError('Yaş 18–99 arasında olmalı.');
+        setFormError(t('profile.ageRange'));
         return;
       }
       if (firstName.trim().length < 2) {
-        setFormError('Adın en az 2 harf olsun.');
+        setFormError(t('profile.nameMin'));
         return;
       }
       const username = normalizeHandle(handle);
       if (!username) {
-        setFormError('Kullanıcı adı 2–30 karakter, harf, rakam, nokta veya alt çizgi.');
+        setFormError(t('profile.usernameRule'));
         return;
       }
       await spot.setMyProfile({
@@ -974,7 +975,7 @@ function EditSheet({ visible, onClose }: { visible: boolean; onClose: () => void
         onClose();
       }, 700);
     } catch (err) {
-      setFormError(err instanceof Error ? err.message : 'Kaydedilemedi.');
+      setFormError(err instanceof Error ? err.message : t('profile.saveFail'));
     }
   };
 

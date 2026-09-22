@@ -1,7 +1,7 @@
 import { Platform } from 'react-native';
 import type { ThemeScheme } from '../theme';
 
-const KEY = 'spot_theme';
+const KEY = 'spot_theme_v2';
 
 async function nativeStore() {
   return import('expo-secure-store');

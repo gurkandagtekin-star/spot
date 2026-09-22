@@ -13,11 +13,21 @@ export type OAuthResult =
   | { error: string };
 
 const APP_SCHEME = 'markdate';
-const WEB_CLIENT_ID = String(
-  process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ||
-    process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID ||
-    '',
-).trim();
+
+function readGoogleWebClientId() {
+  const fromEnv = String(
+    process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ||
+      process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID ||
+      '',
+  ).trim();
+  if (fromEnv) return fromEnv;
+  const extra = Constants.expoConfig?.extra as
+    | { googleWebClientId?: string }
+    | undefined;
+  return String(extra?.googleWebClientId || '').trim();
+}
+
+const WEB_CLIENT_ID = readGoogleWebClientId();
 
 let nativeConfigured = false;
 

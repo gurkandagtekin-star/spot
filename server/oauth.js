@@ -162,8 +162,7 @@ function callbackUrl(req, path) {
 }
 
 function googleRedirectForClient(req) {
-  const fromClient = String(req.query.redirect_uri || req.query.redirect || '').trim();
-  if (/^markdate:/i.test(fromClient)) return fromClient;
+  const fromClient = String(req.query.redirect_uri || '').trim();
   try {
     const u = new URL(fromClient);
     if (u.protocol === 'https:' && /auth\.expo\.io$/i.test(u.hostname)) {

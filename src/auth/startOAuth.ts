@@ -4,6 +4,7 @@ import * as AuthSession from 'expo-auth-session';
 import * as WebBrowser from 'expo-web-browser';
 import { api, getApiUrl } from '../api';
 import { failCatch, localError } from '../i18n/errors';
+import { parseSpotToken } from './parseToken';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -14,20 +15,21 @@ export type OAuthResult =
 
 const APP_SCHEME = 'markdate';
 
+const GOOGLE_SIGNIN_WEB_CLIENT_ID =
+  '41366568333-tvtr9ptfs6irpdkhntnsbnlgug61eo3d.apps.googleusercontent.com';
+
 function readGoogleWebClientId() {
   const fromEnv = String(
-    process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ||
-      process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID ||
-      '',
+    process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID || '',
   ).trim();
   if (fromEnv) return fromEnv;
   const extra = Constants.expoConfig?.extra as
     | { googleWebClientId?: string }
     | undefined;
-  return String(extra?.googleWebClientId || '').trim();
+  return String(extra?.googleWebClientId || GOOGLE_SIGNIN_WEB_CLIENT_ID).trim();
 }
 
-const WEB_CLIENT_ID = readGoogleWebClientId();
+const WEB_CLIENT_ID = readGoogleWebClientId() || GOOGLE_SIGNIN_WEB_CLIENT_ID;
 
 let nativeConfigured = false;
 
@@ -56,6 +58,42 @@ function appReturnUri() {
     scheme: APP_SCHEME,
     path: 'oauth',
   });
+}
+
+function isDeveloperError(err: unknown) {
+  const message = String(err instanceof Error ? err.message : err);
+  if (/DEVELOPER_ERROR|\bcode:\s*10\b/i.test(message)) return true;
+  if (err && typeof err === 'object' && 'code' in err) {
+    const code = String((err as { code: unknown }).code);
+    if (code === '10' || /DEVELOPER_ERROR/i.test(code)) return true;
+  }
+  return false;
+}
+
+async function startAppBrowserGoogleSignIn(): Promise<OAuthResult> {
+  if (!WEB_CLIENT_ID) return { error: localError('Google ayarlı değil.') };
+  const returnUrl = appReturnUri();
+  const startUrl = `${getApiUrl()}/auth/google/start?redirect=${encodeURIComponent(
+    returnUrl,
+  )}`;
+  try {
+    const result = await WebBrowser.openAuthSessionAsync(startUrl, returnUrl);
+    if (result.type !== 'success' || !result.url) {
+      if (result.type === 'cancel' || result.type === 'dismiss') {
+        return { cancelled: true };
+      }
+      return { error: localError('Giriş tamamlanamadı.') };
+    }
+    const token = parseSpotToken(result.url);
+    if (!token) {
+      return { error: localError('Giriş tamamlandı ama oturum anahtarı gelmedi.') };
+    }
+    return { token };
+  } catch (err) {
+    return {
+      error: failCatch(err, 'Google penceresi açılamadı.'),
+    };
+  }
 }
 
 async function startWebGoogleSignIn(): Promise<OAuthResult | void> {
@@ -134,7 +172,7 @@ async function startNativeGoogleSignIn(): Promise<OAuthResult> {
 
   if (!nativeConfigured) {
     GoogleSignin.configure({
-      webClientId: WEB_CLIENT_ID,
+      webClientId: GOOGLE_SIGNIN_WEB_CLIENT_ID,
       offlineAccess: false,
     });
     nativeConfigured = true;
@@ -180,7 +218,10 @@ export async function startGoogleSignIn(): Promise<OAuthResult | void> {
         return { error: localError('Google girişi zaten sürüyor.') };
       }
     } catch {
-      return startBrowserGoogleSignIn();
+      return startAppBrowserGoogleSignIn();
+    }
+    if (isDeveloperError(err) || missingNativeModule(err)) {
+      return startAppBrowserGoogleSignIn();
     }
     return {
       error: failCatch(err, 'Google girişi başarısız.'),

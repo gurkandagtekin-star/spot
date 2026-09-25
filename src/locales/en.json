@@ -93,13 +93,13 @@
     "helloSent": "Hello sent. Chat opens if they accept.",
     "anonTitle": "Anonymous mark",
     "anonBody": "This mark was posted anonymously. The profile wall is hidden.",
-    "joinMine": "Send request",
+    "joinMine": "Go to mark",
     "openChat": "Open chat",
     "chatOpen": "Chat open",
     "waiting": "Waiting",
     "fullCta": "Full",
-    "sayHi": "Say hi",
-    "join": "Join"
+    "sayHi": "Send request",
+    "join": "Send request"
   },
   "compose": {
     "kicker": "New mark",
@@ -138,6 +138,7 @@
     "phMeet": "There's a meetup here — write if you want in.",
     "watchAd": "Watch ad, +1 mark",
     "drop": "Drop mark",
+    "dropping": "Saving...",
     "photoFail": "Couldn't get a photo.",
     "addVisual": "Add a photo",
     "meetPhoto": "Meetup photo",
@@ -279,11 +280,15 @@
     "statMeet": "Meetups",
     "statFollowers": "Followers",
     "statFollowing": "Following",
+    "followListEmptyFollowers": "No followers yet.",
+    "followListEmptyFollowing": "Not following anyone yet.",
+    "followListFail": "Couldn't load the list.",
     "bioOwn": "Write a short bio from Edit.",
     "bioEmpty": "No bio.",
     "wall": "Wall",
     "places": "Places",
     "share": "Post",
+    "sharing": "Posting...",
     "wallPh": "Write a note on your wall...",
     "placesEmptyOwn": "Places you hang out collect here as you drop marks.",
     "placesEmpty": "No places yet.",
@@ -301,6 +306,9 @@
     "back": "Back",
     "proA11y": "Mark Date Pro",
     "deleteNote": "Delete",
+    "deletingNote": "Deleting...",
+    "deleteNoteTitle": "Delete note",
+    "deleteNoteBody": "This wall note will be permanently deleted. Continue?",
     "blocked": "Blocked.",
     "reported": "Report received. The team will look.",
     "wallPosted": "Posted to the wall.",
@@ -333,6 +341,9 @@
     "vibeKicker": "Profile",
     "vibe": "Vibe",
     "vibeHint": "Shown on the note over your photo. Up to 8 tags.",
+    "vibeCustom": "Create your own mood",
+    "vibeCustomPh": "What's your mood?",
+    "vibeCustomAdd": "Add",
     "editKicker": "Edit wall",
     "streetId": "Street identity",
     "firstName": "First name",
@@ -462,6 +473,44 @@
     "phYear": "YYYY",
     "phHandle": "username",
     "phBio": "Coffee, the shore, new people…"
+  },
+  "badges": {
+    "guideKicker": "Badges and titles",
+    "guideTitle": "How to earn them?",
+    "guideLead": "Join meetups and check in to unlock badges. The Social Leader crown finds new holders every Monday.",
+    "guideA11y": "Show how badges are earned",
+    "earned": "Earned",
+    "earnedLeader": "At the top",
+    "locked": "Locked",
+    "theirs": "Earned",
+    "otherTitle": "{{name}}’s badges",
+    "otherLead": "Titles on this profile and how they are earned.",
+    "otherEmpty": "This profile has no badges yet.",
+    "socialLeader": {
+      "title": "Social Leader",
+      "how": "The active member who takes the lead and keeps the group together.",
+      "need": "Be one of the top 3 hosts with the most positive check-ins in the last 7 days."
+    },
+    "seri": {
+      "title": "Seri",
+      "how": "The committed member who reaches meetup spots on time and with pace.",
+      "need": "Check in at least twice within 350 meters of the meetup pin."
+    },
+    "gece": {
+      "title": "Night Owl",
+      "how": "The active member who joins the city’s night life and late events.",
+      "need": "Complete at least 2 night meetups between 22:00 and 05:00."
+    },
+    "kurtarici": {
+      "title": "Lifesaver",
+      "how": "The member who arrives at the last minute and completes the gathering.",
+      "need": "Join someone else’s mark 3 times with less than 45 minutes to go."
+    },
+    "kelebek": {
+      "title": "Social Butterfly",
+      "how": "The member who builds a wide social circle across different kinds of events.",
+      "need": "Make 5 check-ins in total and socialize in at least 2 different kinds."
+    }
   },
   "conn": {
     "title": "Couldn’t reach the server",

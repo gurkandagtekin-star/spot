@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAndroidBack } from '../hooks/useAndroidBack';
-import { KEYBOARD_SCROLL_PAD, useKeyboardHeight } from '../hooks/useKeyboard';
+import { KEYBOARD_SCROLL_PAD, useKeyboardHeight, useStableBottomInset } from '../hooks/useKeyboard';
 import {
   FlatList,
   Image,
@@ -13,7 +13,6 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Clipboard from 'expo-clipboard';
 import { Avatar } from '../components/Avatar';
 import { useAlert } from '../context/AlertContext';
@@ -74,7 +73,7 @@ export function ChatScreen({ chatId, onBack, onOpenProfile }: Props) {
   const spot = useSpot();
   const { showAlert } = useAlert();
   const { t, i18n } = useTranslation();
-  const insets = useSafeAreaInsets();
+  const navBottom = useStableBottomInset();
   const [text, setText] = useState('');
   const [safetyOpen, setSafetyOpen] = useState(false);
   const [peek, setPeek] = useState(false);
@@ -211,7 +210,7 @@ export function ChatScreen({ chatId, onBack, onOpenProfile }: Props) {
     });
   };
 
-  const composerPad = kbHeight > 0 ? 6 : Math.max(insets.bottom, 10);
+  const composerPad = Math.max(navBottom, 8);
 
   return (
     <View style={styles.page}>
@@ -381,7 +380,7 @@ export function ChatScreen({ chatId, onBack, onOpenProfile }: Props) {
         ) : null}
       </View>
 
-      <View style={[styles.body, { paddingBottom: kbHeight }]}>
+      <View style={[styles.body, { paddingBottom: Platform.OS === 'ios' ? kbHeight : 0 }]}>
           {chat.needsCheckin ? (
             <View style={styles.checkin}>
               <Text style={styles.checkinTitle}>{t('chat.checkin')}</Text>

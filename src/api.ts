@@ -1,6 +1,6 @@
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
-import type { ChatThread, JoinRequest, Pin, Profile, WallPost } from './types';
+import type { ChatThread, FollowListUser, JoinRequest, Pin, Profile, WallPost } from './types';
 import { mergeWallPosts } from './wall/persist';
 import { readWallFromBio, withWallInBio } from './wall/bio';
 import { acceptLanguage, localError } from './i18n/errors';
@@ -251,10 +251,10 @@ export const api = {
   }) => request<Snapshot>('/me/pro/sync', { method: 'POST', body }),
   lookupPlace: (lat: number, lng: number) =>
     request<{ placeName: string; area?: string }>(`/geo/reverse?lat=${lat}&lng=${lng}`),
-  joinPin: (pinId: string) =>
+  joinPin: (pinId: string, body?: { fromId?: string; toId?: string }) =>
     request<Snapshot & { chatId?: string; already?: boolean }>(
       `/pins/${pinId}/join`,
-      { method: 'POST' },
+      { method: 'POST', body: body || {} },
     ),
   decide: (requestId: string, accept: boolean) =>
     request<{ chatId: string | null; filled?: boolean; snapshot: Snapshot }>(
@@ -286,6 +286,10 @@ export const api = {
     request<Snapshot>(`/users/${userId}/follow`, { method: 'POST' }),
   unfollowUser: (userId: string) =>
     request<Snapshot>(`/users/${userId}/follow`, { method: 'DELETE' }),
+  listFollowers: (userId: string) =>
+    request<{ users?: FollowListUser[] }>(`/users/${userId}/followers`),
+  listFollowing: (userId: string) =>
+    request<{ users?: FollowListUser[] }>(`/users/${userId}/following`),
   startHello: (userId: string) =>
     request<{
       chatId?: string | null;
@@ -370,8 +374,39 @@ export const api = {
     }
     return mergeWallPosts(server, readWallFromBio(bio));
   },
-  deleteWallNote: (userId: string, postId: string) =>
-    request<Snapshot>(`/users/${userId}/wall-posts/${postId}`, { method: 'DELETE' }),
+  deleteWallNote: async (userId: string, postId: string) => {
+    try {
+      return await request<Snapshot>(`/users/${userId}/wall-posts/${postId}`, {
+        method: 'DELETE',
+      });
+    } catch (err) {
+      const status = err instanceof ApiError ? err.status : 0;
+      if (status !== 404 && status !== 0) throw err;
+      try {
+        return await request<Snapshot>(`/api/wall/${userId}/${postId}`, {
+          method: 'DELETE',
+        });
+      } catch (retry) {
+        const retryStatus = retry instanceof ApiError ? retry.status : 0;
+        if (retryStatus !== 404 && retryStatus !== 0) throw retry;
+        const snap = await request<Snapshot>('/snapshot');
+        const me = snap.me;
+        if (!me?.id || me.id !== userId) throw retry;
+        const posts = mergeWallPosts(me.wallPosts, readWallFromBio(me.bio)).filter(
+          (p) => p.id !== postId,
+        );
+        const next = await request<Snapshot>('/me', {
+          method: 'PATCH',
+          body: { bio: withWallInBio(me.bio || '', posts) },
+        });
+        if (next.me) next.me.wallPosts = posts;
+        next.profiles = (next.profiles || []).map((p) =>
+          p.id === me.id ? { ...p, wallPosts: posts } : p,
+        );
+        return next;
+      }
+    }
+  },
   reportUser: (userId: string, reason: string, pinId?: string) =>
     request<{ ok: boolean }>(`/users/${userId}/report`, {
       method: 'POST',

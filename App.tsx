@@ -231,10 +231,8 @@ function Root() {
     );
   }
 
-  const flushTop = Boolean(wall) || (!chatId && !proOpen && tab === 'profile');
-
   return (
-    <SafeAreaView style={styles.safe} edges={flushTop ? ['left', 'right'] : ['top', 'left', 'right']}>
+    <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
       <SystemChrome lightIcons={scheme === 'dark'} />
       <View style={styles.body}>
         <ScreenTransition token={layer} direction={layerDir}>
@@ -247,6 +245,7 @@ function Root() {
                 setWall(null);
               }}
               onOpenChat={openChat}
+              onOpenProfile={openWall}
               onShowOnMap={(pinId) => {
                 dirRef.current = -1;
                 setWall(null);
@@ -303,6 +302,7 @@ function Root() {
           ) : (
             <ProfileScreen
               onOpenPro={openPro}
+              onOpenProfile={openWall}
               onShowOnMap={(pinId) => {
                 setMapIntent({ type: 'focus', pinId });
                 goTab('map');

@@ -227,10 +227,11 @@ type SpotContextValue = SpotState & {
   unreadChats: number;
 };
 
-const emptySnap: Snapshot = {
+const emptySnap: Snapshot & { live: Pin[] } = {
   me: emptyMe,
   profiles: [],
   pins: [],
+  live: [],
   requests: [],
   chats: [],
   blocked: [],
@@ -381,25 +382,7 @@ function applySnap(
     );
     const hideOther = (otherId?: string) =>
       Boolean(otherId && otherId !== me.id && seenBlocked.has(otherId));
-    return {
-    ...prev,
-    ...snap,
-    me,
-    profiles: [...mapped, ...extras].filter((p) => p.id === me.id || !seenBlocked.has(p.id)),
-    requests: (snap.requests || []).filter(
-      (r) => !isRequestHidden(r.id) && !hideOther(r.fromId),
-    ),
-    chats: (snap.chats || [])
-      .filter((c) => !isChatHidden(c.id))
-      .filter((c) => !c.memberIds.some((id) => hideOther(id)))
-      .map((c) => ({
-        ...c,
-        messages: (c.messages || []).map((m) => ({
-          ...m,
-          imageUrl: mediaUrl(m.imageUrl) || m.imageUrl,
-        })),
-      })),
-    pins: (snap.pins || [])
+    const pins = (snap.pins || [])
       .filter((p) => p.authorId === me.id || !seenBlocked.has(p.authorId))
       .map((p) => {
       const author =
@@ -420,7 +403,27 @@ function applySnap(
         capacity: p.capacity || pinEmbeddedSeats(p.text),
         anonymous: Boolean(p.anonymous) || pinEmbeddedAnon(p.text),
       };
-    }),
+    });
+    return {
+    ...prev,
+    ...snap,
+    me,
+    profiles: [...mapped, ...extras].filter((p) => p.id === me.id || !seenBlocked.has(p.id)),
+    requests: (snap.requests || []).filter(
+      (r) => !isRequestHidden(r.id) && !hideOther(r.fromId),
+    ),
+    chats: (snap.chats || [])
+      .filter((c) => !isChatHidden(c.id))
+      .filter((c) => !(c.memberIds || []).some((id) => hideOther(id)))
+      .map((c) => ({
+        ...c,
+        messages: (c.messages || []).map((m) => ({
+          ...m,
+          imageUrl: mediaUrl(m.imageUrl) || m.imageUrl,
+        })),
+      })),
+    pins,
+    live: livePins(pins),
     signedIn,
     notice: prev.notice,
     apiDown: false,
@@ -639,20 +642,20 @@ export function SpotProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<SpotContextValue>(() => {
     const me = state.me ?? emptyMe;
-    const live = livePins(state.pins);
+    const live = livePins(state.pins || []);
     const remainingPins = me.id
       ? pinsLeftToday(
-          state.pins,
+          state.pins || [],
           me.id,
           Date.now(),
           dailyPinLimit(Boolean(me.isPro), Number(me.adMarksToday) || 0),
         )
       : 0;
     const profileById = (id: string) =>
-      state.profiles.find((p) => p.id === id) || extraProfiles[id];
+      (state.profiles || []).find((p) => p.id === id) || extraProfiles[id];
 
     const isChatUnread = (chatId: string) => {
-      const chat = state.chats.find((c) => c.id === chatId);
+      const chat = (state.chats || []).find((c) => c.id === chatId);
       const last = chat?.messages[chat.messages.length - 1];
       if (!last || last.fromId === me.id || last.fromId === 'system') return false;
       return last.at > (lastRead[chatId] || 0);
@@ -660,7 +663,7 @@ export function SpotProvider({ children }: { children: ReactNode }) {
     const unreadChats = state.chats.filter((c) => isChatUnread(c.id)).length;
 
     const markChatRead = (chatId: string) => {
-      const chat = state.chats.find((c) => c.id === chatId);
+      const chat = (state.chats || []).find((c) => c.id === chatId);
       const lastAt = chat?.messages[chat.messages.length - 1]?.at ?? Date.now();
       setLastRead((prev) => {
         if ((prev[chatId] || 0) >= lastAt) return prev;
@@ -794,19 +797,30 @@ export function SpotProvider({ children }: { children: ReactNode }) {
     };
 
     const sendJoin: SpotContextValue['sendJoin'] = async (pinId) => {
+      const currentUserId = String(state.me?.id || '').trim();
+      const pins = state.pins || [];
+      const live = state.live || livePins(pins);
       const pin =
-        state.live.find((p) => p.id === pinId) ||
-        state.pins.find((p) => p.id === pinId);
-      if (pin) {
-        const open = liveChatWith(state.chats, state.me.id, pin.authorId);
+        live.find((p) => p.id === pinId) ||
+        pins.find((p) => p.id === pinId);
+      const targetUserId = String(pin?.authorId || '').trim();
+      console.info('sendJoin', { pinId, currentUserId, targetUserId });
+      if (!currentUserId) {
+        return { ok: false, reason: localError('Oturum yok.') };
+      }
+      if (pin && currentUserId === targetUserId) {
+        return { ok: false, reason: localError('Kendi mark’ına istek gönderemezsin.') };
+      }
+      if (pin && targetUserId) {
+        const open = liveChatWith(state.chats || [], currentUserId, targetUserId);
         if (open) return { ok: true, chatId: open.id, already: true };
         const waiting = pendingPairRequest(
-          state.requests,
-          [...state.live, ...state.pins],
-          state.me.id,
-          pin.authorId,
+          state.requests || [],
+          [...live, ...pins],
+          currentUserId,
+          targetUserId,
         );
-        if (waiting) {
+        if (waiting && waiting.fromId === currentUserId) {
           return {
             ok: false,
             reason: localError('İstek zaten gönderildi, onay bekleniyor.'),
@@ -814,13 +828,14 @@ export function SpotProvider({ children }: { children: ReactNode }) {
         }
       }
       try {
-        const data = await api.joinPin(pinId);
+        const data = await api.joinPin(pinId, { fromId: currentUserId, toId: targetUserId });
         hydrate(data);
         if (data.chatId) {
           return { ok: true, chatId: data.chatId, already: Boolean(data.already) };
         }
         return { ok: true };
       } catch (err) {
+        console.error('sendJoin failed', { pinId, currentUserId, targetUserId, err });
         return {
           ok: false,
           reason: failCatch(err, 'İstek gönderilemedi.'),
@@ -1135,7 +1150,7 @@ export function SpotProvider({ children }: { children: ReactNode }) {
         return { ok: false, reason: localError('Engellenemedi.') };
       }
       const person =
-        state.profiles.find((p) => p.id === userId) || extraProfiles[userId];
+        (state.profiles || []).find((p) => p.id === userId) || extraProfiles[userId];
       setState((s) => ({
         ...s,
         pins: s.pins.filter((p) => p.authorId !== userId),
@@ -1308,11 +1323,11 @@ export function SpotProvider({ children }: { children: ReactNode }) {
       if (!userId || userId === state.me.id) {
         return { ok: false, reason: localError('Kendine selam atamazsın.') };
       }
-      const open = liveChatWith(state.chats, state.me.id, userId);
+      const open = liveChatWith(state.chats || [], state.me.id, userId);
       if (open) return { ok: true, chatId: open.id };
       const waiting = pendingPairRequest(
-        state.requests,
-        [...state.live, ...state.pins],
+        state.requests || [],
+        [...(state.live || []), ...(state.pins || [])],
         state.me.id,
         userId,
       );
@@ -1365,27 +1380,17 @@ export function SpotProvider({ children }: { children: ReactNode }) {
     };
 
     const deleteWallNote: SpotContextValue['deleteWallNote'] = async (userId, postId) => {
+      if (!userId || !postId) return { ok: false, reason: localError('Not yok.') };
       try {
-        hydrate(await api.deleteWallNote(userId, postId));
+        const snap = await api.deleteWallNote(userId, postId);
+        hydrate(snap);
         forgetWallPost(userId, postId);
         return { ok: true };
-      } catch {
-        forgetWallPost(userId, postId);
-        setState((s) => {
-          const paint = (p: Profile) =>
-            p.id === userId
-              ? {
-                  ...p,
-                  wallPosts: (p.wallPosts || []).filter((x) => x.id !== postId),
-                }
-              : p;
-          return {
-            ...s,
-            me: paint(s.me),
-            profiles: (s.profiles || []).map(paint),
-          };
-        });
-        return { ok: true };
+      } catch (err) {
+        return {
+          ok: false,
+          reason: failCatch(err, 'Not silinemedi.'),
+        };
       }
     };
 

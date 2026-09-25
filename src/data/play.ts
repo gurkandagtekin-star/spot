@@ -54,17 +54,31 @@ export const BADGE_META: Record<
 > = {
   kurtarici: {
     title: 'Kurtarıcı',
-    text: 'Son anda masaya / sahaya yetişen.',
+    text: 'Planlanan buluşmalara son dakikada yetişerek organizasyonu tamamlayan üye.',
   },
   kelebek: {
-    title: 'Sosyal kelebek',
-    text: 'Farklı türde buluşmalara katıldın.',
+    title: 'Sosyal Kelebek',
+    text: 'Farklı türdeki etkinliklere katılarak geniş bir sosyallik çemberi oluşturan üye.',
+  },
+  seri: {
+    title: 'Seri',
+    text: 'Buluşma noktalarına zamanında ve hızlı ulaşan kararlı üye.',
   },
   dakik: {
-    title: 'Dakik',
-    text: 'Buluşma noktasına zamanında vardın.',
+    title: 'Seri',
+    text: 'Buluşma noktalarına zamanında ve hızlı ulaşan kararlı üye.',
+  },
+  gece: {
+    title: 'Gece Kuşu',
+    text: 'Gece hayatına ve geç saatlerdeki etkinliklere katılan aktif üye.',
   },
 };
+
+export const BADGE_CATALOG = ['seri', 'gece', 'kurtarici', 'kelebek'] as const;
+
+export function normalizeBadgeId(id: string) {
+  return id === 'dakik' ? 'seri' : id;
+}
 
 export function suggestionsFor(placeName?: string, kind?: PinKind) {
   const place = placeName?.trim();

@@ -35,10 +35,17 @@ export function rcPublicKeyForOs(os = Platform.OS) {
   return '';
 }
 
-/** Native store billing. Web and missing SDK key stay off — no fake prices. */
+/** RC Test Store keys (`test_…`) crash Play/release builds. Need `goog_` / `appl_`. */
+export function rcKeySafeForThisBuild(key = rcPublicKeyForOs()) {
+  if (!key) return false;
+  if (!key.startsWith('test_')) return true;
+  return Boolean(typeof __DEV__ !== 'undefined' && __DEV__);
+}
+
+/** Native store billing. Web, missing SDK key, and test keys on release stay off. */
 export function iapEnabledOnThisDevice() {
   if (Platform.OS === 'web') return false;
-  return Boolean(rcPublicKeyForOs());
+  return rcKeySafeForThisBuild();
 }
 
 export const IAP_ENABLED = iapEnabledOnThisDevice();

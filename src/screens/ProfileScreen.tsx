@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
+  ActivityIndicator,
+  KeyboardAvoidingView,
   Platform,
   Pressable,
   RefreshControl,
@@ -12,13 +14,15 @@ import {
 } from 'react-native';
 import { Accordion } from '../components/Accordion';
 import { Avatar } from '../components/Avatar';
-import { PhotoCarousel } from '../components/PhotoCarousel';
+import { COVER_ACTIONS_TOP, PhotoCarousel } from '../components/PhotoCarousel';
 import { PhotoPeek } from '../components/PhotoPeek';
 import { BadgeRow } from '../components/BadgeRow';
+import { BadgeGuideSheet } from '../components/BadgeGuideSheet';
+import { FollowListSheet } from '../components/FollowListSheet';
 import { DragSheet } from '../components/DragSheet';
 import { FilterChips } from '../components/FilterChips';
 import { WallNotesIcon, WallPlaceIcon } from '../components/TabIcons';
-import { VIBE_TAGS, vibeLabel } from '../data/vibe';
+import { CUSTOM_VIBE_MAX, VIBE_MAX_TAGS, VIBE_TAGS, encodeCustomVibe, isCustomVibe, vibeLabel } from '../data/vibe';
 import { ageFromBirthDate, birthDateFromParts, partsFromBirthDate } from '../birthDate';
 import { usePro } from '../pro/usePro';
 import { getFormattedImageUrl } from '../api';
@@ -29,11 +33,10 @@ import { useSpot } from '../store/SpotContext';
 import { radius, type ColorTokens } from '../theme';
 import { useTheme } from '../theme/ThemeContext';
 import { useThemedStyles } from '../theme/useThemedStyles';
-import { useKeyboardHeight } from '../hooks/useKeyboard';
+import { useKeyboardHeight, useStableBottomInset } from '../hooks/useKeyboard';
 import { useTranslation } from 'react-i18next';
 import { useLanguage } from '../i18n/I18nProvider';
 import i18n from '../i18n/i18n';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { Gender, PinKind, WallMark, WallPost } from '../types';
 import {
   displayName,
@@ -56,13 +59,14 @@ type Props = {
   onBack?: () => void;
   onOpenChat?: (chatId: string) => void;
   onShowOnMap?: (pinId: string) => void;
+  onOpenProfile?: (userId: string) => void;
 };
 
-export function ProfileScreen({ onOpenPro, userId, pinId, onBack, onShowOnMap }: Props) {
+export function ProfileScreen({ onOpenPro, userId, pinId, onBack, onShowOnMap, onOpenProfile }: Props) {
   const spot = useSpot();
   const { showAlert } = useAlert();
   const { t } = useTranslation();
-  const insets = useSafeAreaInsets();
+  const navBottom = useStableBottomInset();
   const { height: winH } = useWindowDimensions();
   const kbHeight = useKeyboardHeight();
   const styles = useThemedStyles(createStyles);
@@ -74,8 +78,12 @@ export function ProfileScreen({ onOpenPro, userId, pinId, onBack, onShowOnMap }:
   const [draft, setDraft] = useState('');
   const [toast, setToast] = useState<string | null>(null);
   const [helloBusy, setHelloBusy] = useState(false);
+  const [sharing, setSharing] = useState(false);
+  const [deletingNote, setDeletingNote] = useState<string | null>(null);
   const [heroIndex, setHeroIndex] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
+  const [followList, setFollowList] = useState<'followers' | 'following' | null>(null);
+  const [badgeGuide, setBadgeGuide] = useState(false);
 
   const isOwnProfile = !userId || userId === spot.meId || userId === spot.me?.id;
   const isOtherProfile = !isOwnProfile;
@@ -221,15 +229,22 @@ export function ProfileScreen({ onOpenPro, userId, pinId, onBack, onShowOnMap }:
 
   const shareNote = async () => {
     const text = draft.trim();
-    if (text.length < 2) return;
-    const res = await spot.postWallNote(person.id, text);
-    if (res.ok) setDraft('');
+    if (text.length < 2 || sharing || !person?.id) return;
+    setSharing(true);
     try {
-      setFeed(await spot.refreshWall(person.id));
-    } catch {
-      /* mevcut liste kalsın */
+      const res = await spot.postWallNote(person.id, text);
+      if (res.ok) setDraft('');
+      try {
+        setFeed(await spot.refreshWall(person.id));
+      } catch {
+        /* mevcut liste kalsın */
+      }
+      flash(res.ok ? t('profile.wallPosted') : res.reason);
+    } catch (err) {
+      flash(err instanceof Error ? err.message : t('profile.saveFail'));
+    } finally {
+      setSharing(false);
     }
-    flash(res.ok ? t('profile.wallPosted') : res.reason);
   };
 
   const onRefresh = async () => {
@@ -244,21 +259,61 @@ export function ProfileScreen({ onOpenPro, userId, pinId, onBack, onShowOnMap }:
   };
 
   const dropNote = async (postId: string) => {
-    const res = await spot.deleteWallNote(person.id, postId);
+    if (!person?.id || deletingNote) return;
+    setDeletingNote(postId);
     try {
-      setFeed(await spot.refreshWall(person.id));
-    } catch {
-      /* */
+      const res = await spot.deleteWallNote(person.id, postId);
+      if (!res.ok) {
+        flash(res.reason);
+        return;
+      }
+      setFeed((list) => list.filter((p) => p.id !== postId));
+      try {
+        setFeed(await spot.refreshWall(person.id));
+      } catch {
+        /* yerel liste kalsın */
+      }
+      flash(t('profile.noteDeleted'));
+    } catch (err) {
+      flash(err instanceof Error ? err.message : t('profile.saveFail'));
+    } finally {
+      setDeletingNote(null);
     }
-    flash(res.ok ? t('profile.noteDeleted') : res.reason);
+  };
+
+  const askDropNote = (postId: string) => {
+    if (!person?.id || deletingNote) return;
+    showAlert({
+      title: t('profile.deleteNoteTitle'),
+      message: t('profile.deleteNoteBody'),
+      confirmText: t('profile.deleteNote'),
+      cancelText: t('common.cancel'),
+      type: 'danger',
+      onConfirm: () => {
+        void dropNote(postId);
+      },
+    });
   };
 
   const dockedComposer = tab === 'notes' && chrome.composer;
   const handle = usernameOf(person);
 
+  const keyboardLift =
+    kbHeight > 0 ? kbHeight + (Platform.OS === 'android' ? navBottom : 0) : 0;
+
   return (
-    <View style={styles.page}>
-    <View style={[styles.column, { paddingBottom: kbHeight }]}>
+    <KeyboardAvoidingView
+      style={styles.page}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      keyboardVerticalOffset={0}
+      enabled={Platform.OS === 'ios'}
+    >
+    <View
+      style={[
+        styles.column,
+        Platform.OS === 'android' ? { paddingBottom: keyboardLift } : null,
+      ]}
+    >
       <ScrollView
         style={styles.scroller}
         contentContainerStyle={[
@@ -266,6 +321,8 @@ export function ProfileScreen({ onOpenPro, userId, pinId, onBack, onShowOnMap }:
           dockedComposer ? styles.contentWithDock : null,
         ]}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -280,11 +337,14 @@ export function ProfileScreen({ onOpenPro, userId, pinId, onBack, onShowOnMap }:
             uris={gallery}
             name={name}
             height={heroH}
-            topInset={8}
+            topInset={0}
             onLongPress={() => setPeek(true)}
             onIndexChange={setHeroIndex}
           />
-          <View style={styles.headerButtons} pointerEvents="box-none">
+          <View
+            style={[styles.headerButtons, { top: COVER_ACTIONS_TOP }]}
+            pointerEvents="box-none"
+          >
             {chrome.camera ? (
               <View style={styles.coverActions}>
                 <Pressable
@@ -449,27 +509,60 @@ export function ProfileScreen({ onOpenPro, userId, pinId, onBack, onShowOnMap }:
             </View>
           ) : null}
           <View style={styles.statStrip}>
-            {[
-              [String(markN), t('profile.statMark')],
-              [String(meetN), t('profile.statMeet')],
-              [String(followerN), t('profile.statFollowers')],
-              [String(followingN), t('profile.statFollowing')],
-              [String(badgeN), '★'],
-            ].map(([n, label]) => (
-              <View key={label} style={styles.statCell}>
-                <Text style={styles.statN} numberOfLines={1}>
-                  {n}
-                </Text>
-                <Text style={styles.statL} numberOfLines={1}>
-                  {label}
-                </Text>
-              </View>
-            ))}
+            {(
+              [
+                { n: String(markN), label: t('profile.statMark') },
+                { n: String(meetN), label: t('profile.statMeet') },
+                {
+                  n: String(followerN),
+                  label: t('profile.statFollowers'),
+                  onPress: () => setFollowList('followers'),
+                },
+                {
+                  n: String(followingN),
+                  label: t('profile.statFollowing'),
+                  onPress: () => setFollowList('following'),
+                },
+                { n: String(badgeN), label: '★', onPress: () => setBadgeGuide(true), a11y: t('badges.guideA11y') },
+              ] as {
+                n: string;
+                label: string;
+                onPress?: () => void;
+                a11y?: string;
+              }[]
+            ).map((cell) => {
+              const inner = (
+                <>
+                  <Text style={styles.statN} numberOfLines={1}>
+                    {cell.n}
+                  </Text>
+                  <Text style={styles.statL} numberOfLines={1}>
+                    {cell.label}
+                  </Text>
+                </>
+              );
+              return cell.onPress ? (
+                <Pressable
+                  key={cell.label}
+                  accessibilityRole="button"
+                  accessibilityLabel={cell.a11y || cell.label}
+                  onPress={cell.onPress}
+                  style={styles.statCell}
+                >
+                  {inner}
+                </Pressable>
+              ) : (
+                <View key={cell.label} style={styles.statCell}>
+                  {inner}
+                </View>
+              );
+            })}
           </View>
           <BadgeRow
             neon
-            badges={person.badges}
-            socialLeader={person.socialLeader}
+            badges={person?.badges}
+            socialLeader={person?.socialLeader}
+            onPress={() => setBadgeGuide(true)}
           />
           <Text style={styles.bioLine} numberOfLines={3}>
             {bioLine || (isOwnProfile ? t('profile.bioOwn') : t('profile.bioEmpty'))}
@@ -569,10 +662,19 @@ export function ProfileScreen({ onOpenPro, userId, pinId, onBack, onShowOnMap }:
                       <Pressable
                         accessibilityRole="button"
                         accessibilityLabel={t('profile.deleteNoteA11y')}
+                        accessibilityState={{ disabled: deletingNote === item.id }}
+                        disabled={Boolean(deletingNote)}
                         hitSlop={8}
-                        onPress={() => void dropNote(item.id)}
+                        onPress={() => askDropNote(item.id)}
                       >
-                        <Text style={styles.tweetDelete}>{t('profile.deleteNote')}</Text>
+                        {deletingNote === item.id ? (
+                          <View style={styles.shareBusy}>
+                            <ActivityIndicator color="#C2410C" size="small" />
+                            <Text style={styles.tweetDelete}>{t('profile.deletingNote')}</Text>
+                          </View>
+                        ) : (
+                          <Text style={styles.tweetDelete}>{t('profile.deleteNote')}</Text>
+                        )}
                       </Pressable>
                     </View>
                   ) : null}
@@ -585,7 +687,19 @@ export function ProfileScreen({ onOpenPro, userId, pinId, onBack, onShowOnMap }:
       </ScrollView>
 
       {dockedComposer ? (
-        <View style={styles.composerDock}>
+        <View
+          style={[
+            styles.composerDock,
+            {
+              paddingBottom:
+                kbHeight > 0
+                  ? Platform.OS === 'ios'
+                    ? Math.max(navBottom, 8)
+                    : 8
+                  : 8,
+            },
+          ]}
+        >
           <View style={styles.composerBar}>
             <TextInput
               value={draft}
@@ -597,11 +711,23 @@ export function ProfileScreen({ onOpenPro, userId, pinId, onBack, onShowOnMap }:
             />
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel={t('profile.share')}
-              style={[styles.shareBtn, draft.trim().length < 2 && styles.solidOff]}
+              accessibilityLabel={sharing ? t('profile.sharing') : t('profile.share')}
+              accessibilityState={{ disabled: sharing || draft.trim().length < 2 }}
+              disabled={sharing || draft.trim().length < 2}
+              style={[
+                styles.shareBtn,
+                (sharing || draft.trim().length < 2) && styles.solidOff,
+              ]}
               onPress={() => void shareNote()}
             >
-              <Text style={styles.shareBtnTxt}>{t('profile.share')}</Text>
+              {sharing ? (
+                <View style={styles.shareBusy}>
+                  <ActivityIndicator color="#fff" size="small" />
+                  <Text style={styles.shareBtnTxt}>{t('profile.sharing')}</Text>
+                </View>
+              ) : (
+                <Text style={styles.shareBtnTxt}>{t('profile.share')}</Text>
+              )}
             </Pressable>
           </View>
         </View>
@@ -630,11 +756,31 @@ export function ProfileScreen({ onOpenPro, userId, pinId, onBack, onShowOnMap }:
       ) : null}
       <PhotoPeek
         visible={peek}
-        uri={getFormattedImageUrl(person.photoUrl) || person.photoUrl}
+        uri={getFormattedImageUrl(person?.photoUrl) || person?.photoUrl}
         name={name}
         onClose={() => setPeek(false)}
       />
-    </View>
+      {followList && wallUserId ? (
+        <FollowListSheet
+          visible
+          kind={followList}
+          userId={wallUserId}
+          onClose={() => setFollowList(null)}
+          onOpenProfile={(id) => {
+            setFollowList(null);
+            onOpenProfile?.(id);
+          }}
+        />
+      ) : null}
+      <BadgeGuideSheet
+        visible={badgeGuide}
+        badges={person?.badges}
+        socialLeader={person?.socialLeader}
+        mine={isOwnProfile}
+        name={name}
+        onClose={() => setBadgeGuide(false)}
+      />
+    </KeyboardAvoidingView>
   );
 }
 
@@ -939,27 +1085,47 @@ function VibeSheet({ visible, onClose }: { visible: boolean; onClose: () => void
   const { t } = useTranslation();
   const styles = useThemedStyles(createStyles);
   const [picked, setPicked] = useState<string[]>(spot.me.interests || []);
+  const [customDraft, setCustomDraft] = useState('');
 
   useEffect(() => {
     if (!visible) return;
     setPicked(spot.me.interests || []);
+    setCustomDraft('');
   }, [visible, spot.me.interests]);
 
-  const toggle = (id: string) => {
-    const next = picked.includes(id)
-      ? picked.filter((x) => x !== id)
-      : [...picked, id].slice(0, 8);
+  const persist = (next: string[]) => {
     setPicked(next);
-    const note = next.map(vibeLabel).join(' · ').slice(0, 40);
+    const note = next.map(vibeLabel).filter(Boolean).join(' · ');
     void spot.setMyProfile({ interests: next, vibeNote: note }).catch(() => {
       setPicked(spot.me.interests || []);
     });
   };
 
+  const toggle = (id: string) => {
+    const next = picked.includes(id)
+      ? picked.filter((x) => x !== id)
+      : [...picked, id].slice(0, VIBE_MAX_TAGS);
+    persist(next);
+  };
+
+  const addCustom = () => {
+    const encoded = encodeCustomVibe(customDraft);
+    if (!encoded) return;
+    if (picked.includes(encoded)) {
+      setCustomDraft('');
+      return;
+    }
+    persist([...picked, encoded].slice(0, VIBE_MAX_TAGS));
+    setCustomDraft('');
+  };
+
   if (!visible) return null;
 
+  const customChips = picked.filter(isCustomVibe);
+  const atCap = picked.length >= VIBE_MAX_TAGS;
+
   return (
-    <DragSheet visible onClose={onClose}>
+    <DragSheet visible onClose={onClose} keyboard>
       <Text style={styles.sheetKicker}>{t('profile.vibeKicker')}</Text>
       <Text style={styles.sheetTitle}>{t('profile.vibe')}</Text>
       <Text style={styles.meta}>{t('profile.vibeHint')}</Text>
@@ -979,6 +1145,46 @@ function VibeSheet({ visible, onClose }: { visible: boolean; onClose: () => void
             </Pressable>
           );
         })}
+        {customChips.map((id) => (
+          <Pressable
+            key={id}
+            accessibilityRole="button"
+            accessibilityLabel={vibeLabel(id)}
+            accessibilityState={{ selected: true }}
+            onPress={() => toggle(id)}
+            style={[styles.tag, styles.tagOn, styles.tagCustom]}
+          >
+            <Text style={[styles.tagText, styles.tagTextOn]}>{vibeLabel(id)} ×</Text>
+          </Pressable>
+        ))}
+      </View>
+      <Text style={styles.customLabel}>{t('profile.vibeCustom')}</Text>
+      <View style={styles.customRow}>
+        <TextInput
+          value={customDraft}
+          onChangeText={(v) => setCustomDraft(v.slice(0, CUSTOM_VIBE_MAX))}
+          placeholder={t('profile.vibeCustomPh')}
+          placeholderTextColor="#8A8190"
+          maxLength={CUSTOM_VIBE_MAX}
+          autoCorrect={false}
+          autoCapitalize="sentences"
+          returnKeyType="done"
+          onSubmitEditing={addCustom}
+          style={styles.customInput}
+        />
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={t('profile.vibeCustomAdd')}
+          accessibilityState={{ disabled: atCap || !encodeCustomVibe(customDraft) }}
+          disabled={atCap || !encodeCustomVibe(customDraft)}
+          onPress={addCustom}
+          style={[
+            styles.customAdd,
+            (atCap || !encodeCustomVibe(customDraft)) && styles.solidOff,
+          ]}
+        >
+          <Text style={styles.customAddTxt}>{t('profile.vibeCustomAdd')}</Text>
+        </Pressable>
       </View>
     </DragSheet>
   );
@@ -1162,7 +1368,7 @@ const createStyles = (colors: ColorTokens) =>
     },
     headerButtons: {
       position: 'absolute',
-      top: 40,
+      top: COVER_ACTIONS_TOP,
       left: 16,
       right: 16,
       flexDirection: 'row',
@@ -1329,18 +1535,31 @@ const createStyles = (colors: ColorTokens) =>
       position: 'absolute',
       left: 16,
       bottom: 14,
-      maxWidth: 160,
+      maxWidth: 200,
       zIndex: 999,
       elevation: 10,
-      backgroundColor: 'rgba(18, 8, 28, 0.92)',
+      backgroundColor: 'rgba(18, 8, 28, 0.78)',
       borderWidth: 1,
-      borderColor: '#FF5E97',
+      borderColor: '#FF7AB8',
       borderRadius: 14,
       borderBottomLeftRadius: 4,
       paddingHorizontal: 10,
       paddingVertical: 6,
+      shadowColor: '#FF5E97',
+      shadowOpacity: 0.85,
+      shadowRadius: 10,
+      shadowOffset: { width: 0, height: 0 },
     },
-    vibeBubbleTxt: { color: '#fff', fontWeight: '800', fontSize: 11, lineHeight: 14 },
+    vibeBubbleTxt: {
+      color: '#FFF4FA',
+      fontWeight: '800',
+      fontSize: 11,
+      lineHeight: 14,
+      letterSpacing: 0.2,
+      textShadowColor: '#FF5E97',
+      textShadowOffset: { width: 0, height: 0 },
+      textShadowRadius: 8,
+    },
     statStrip: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -1444,7 +1663,7 @@ const createStyles = (colors: ColorTokens) =>
       borderTopColor: colors.line,
       paddingHorizontal: 12,
       paddingTop: 8,
-      paddingBottom: Platform.OS === 'android' ? 10 : 8,
+      paddingBottom: 0,
     },
     composerBar: {
       flexDirection: 'row',
@@ -1471,6 +1690,7 @@ const createStyles = (colors: ColorTokens) =>
       paddingHorizontal: 16,
       paddingVertical: 8,
     },
+    shareBusy: { flexDirection: 'row', alignItems: 'center', gap: 8 },
     shareBtnTxt: { color: '#fff', fontWeight: '900', fontSize: 13 },
     reviewCard: {
       gap: 4,
@@ -1581,6 +1801,41 @@ const createStyles = (colors: ColorTokens) =>
     tagOn: { backgroundColor: colors.chipOnBg, borderColor: '#fff' },
     tagText: { color: colors.ink, fontWeight: '800', fontSize: 12 },
     tagTextOn: { color: '#fff' },
+    tagCustom: {
+      borderColor: '#FF7AB8',
+      backgroundColor: 'rgba(255,94,151,0.55)',
+    },
+    customLabel: {
+      marginTop: 14,
+      color: colors.ink,
+      fontWeight: '800',
+      fontSize: 13,
+    },
+    customRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      marginTop: 8,
+    },
+    customInput: {
+      flex: 1,
+      minHeight: 42,
+      borderWidth: 1,
+      borderColor: colors.line,
+      backgroundColor: colors.paperSoft,
+      borderRadius: radius.pill,
+      paddingHorizontal: 14,
+      color: colors.ink,
+      fontWeight: '700',
+      fontSize: 14,
+    },
+    customAdd: {
+      backgroundColor: '#FF5E97',
+      borderRadius: radius.pill,
+      paddingHorizontal: 14,
+      paddingVertical: 10,
+    },
+    customAddTxt: { color: '#fff', fontWeight: '900', fontSize: 13 },
     markCard: {
       backgroundColor: colors.paperSoft,
       borderRadius: 12,

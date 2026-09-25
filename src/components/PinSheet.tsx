@@ -65,7 +65,7 @@ export function PinSheet({
         ? t('discover.chatOpen')
         : seatsFull
           ? t('discover.fullCta')
-          : t('discover.sayHi');
+          : t('discover.join');
 
   return (
     <DragSheet visible onClose={onClose}>
@@ -200,7 +200,8 @@ export function PinSheet({
               <Pressable
                 style={[styles.cta, seatsFull && styles.ctaOff]}
                 onPress={() => {
-                  if (!seatsFull) void onJoin();
+                  if (seatsFull) return;
+                  void onJoin();
                 }}
               >
                 <Text style={styles.ctaText}>{joinLabel}</Text>
@@ -252,11 +253,11 @@ const createStyles = (colors: ColorTokens) =>
     card: {
       flexDirection: 'row',
       gap: 12,
-      backgroundColor: 'rgba(10, 8, 20, 0.55)',
+      backgroundColor: colors.paperSoft,
       borderRadius: radius.md,
       padding: 14,
       borderWidth: 1,
-      borderColor: 'rgba(255, 255, 255, 0.12)',
+      borderColor: colors.line,
     },
     name: { fontWeight: '800', color: colors.ink, fontSize: 16 },
     handleTxt: { color: colors.muted, marginTop: 2 },
@@ -290,8 +291,8 @@ const createStyles = (colors: ColorTokens) =>
       padding: 12,
       borderRadius: radius.md,
       borderWidth: 1,
-      borderColor: 'rgba(255, 255, 255, 0.12)',
-      backgroundColor: 'rgba(10, 8, 20, 0.55)',
+      borderColor: colors.line,
+      backgroundColor: colors.paperSoft,
     },
     smallCta: {
       backgroundColor: colors.coral,

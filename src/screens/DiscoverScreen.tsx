@@ -17,7 +17,7 @@ import { useSpot } from '../store/SpotContext';
 import { radius, type ColorTokens } from '../theme';
 import { useThemedStyles } from '../theme/useThemedStyles';
 import { useTheme } from '../theme/ThemeContext';
-import type { Pin, PinKind, Profile } from '../types';
+import type { JoinRequest, Pin, PinKind, Profile } from '../types';
 import {
   atHandle,
   distanceMeters,
@@ -31,6 +31,7 @@ import {
   liveChatWith,
   pendingPairRequest,
 } from '../utils';
+import { failCatch } from '../i18n/errors';
 import { useTranslation } from 'react-i18next';
 
 type KindFilter = 'all' | PinKind;
@@ -130,51 +131,56 @@ export function DiscoverScreen({
   };
 
   const onJoin = async (pin: Pin) => {
-    if (pin.authorId === spot.meId) {
-      onShowOnMap(pin.id);
-      return;
-    }
-    const open = liveChatWith(spot.chats, spot.meId, pin.authorId);
-    if (open) {
-      flash(t('chats.alreadyOpen'));
-      onOpenChat(open.id);
-      return;
-    }
-    const waiting = pendingPairRequest(
-      spot.requests,
-      [...spot.live, ...spot.pins],
-      spot.meId,
-      pin.authorId,
-    );
-    if (waiting) {
-      flash(t('discover.pending'));
-      return;
-    }
-    const mine = spot.requests.find(
-      (r) => r.pinId === pin.id && r.fromId === spot.meId,
-    );
-    if (mine?.status === 'accepted') {
-      const chat = spot.chats.find(
-        (c) => c.pinId === pin.id && c.memberIds.includes(spot.meId),
+    try {
+      if (pin.authorId === spot.meId) {
+        onShowOnMap(pin.id);
+        return;
+      }
+      const open = liveChatWith(spot.chats, spot.meId, pin.authorId);
+      if (open) {
+        flash(t('chats.alreadyOpen'));
+        onOpenChat(open.id);
+        return;
+      }
+      const waiting = pendingPairRequest(
+        spot.requests || [],
+        [...(spot.live || []), ...(spot.pins || [])],
+        spot.meId,
+        pin.authorId,
       );
-      if (chat) onOpenChat(chat.id);
-      return;
+      if (waiting && waiting.fromId === spot.meId) {
+        flash(t('discover.pending'));
+        return;
+      }
+      const mine = (spot.requests || []).find(
+        (r) => r.pinId === pin.id && r.fromId === spot.meId,
+      );
+      if (mine?.status === 'accepted') {
+        const chat = (spot.chats || []).find(
+          (c) => c.pinId === pin.id && c.memberIds.includes(spot.meId),
+        );
+        if (chat) onOpenChat(chat.id);
+        return;
+      }
+      if (mine?.status === 'pending') {
+        flash(t('discover.pending'));
+        return;
+      }
+      if (pin.capacity && pinFilledCount(pin) >= pin.capacity) {
+        flash(t('discover.full'));
+        return;
+      }
+      const res = await spot.sendJoin(pin.id);
+      if (res.ok && res.chatId) {
+        flash(t('chats.alreadyOpen'));
+        onOpenChat(res.chatId);
+        return;
+      }
+      flash(res.ok ? t('discover.helloSent') : res.reason);
+    } catch (err) {
+      console.error('discover onJoin', { pinId: pin.id, fromId: spot.meId, toId: pin.authorId, err });
+      flash(failCatch(err, 'İstek gönderilemedi.'));
     }
-    if (mine?.status === 'pending') {
-      flash(t('discover.pending'));
-      return;
-    }
-    if (pin.capacity && pinFilledCount(pin) >= pin.capacity) {
-      flash(t('discover.full'));
-      return;
-    }
-    const res = await spot.sendJoin(pin.id);
-    if (res.ok && res.chatId) {
-      flash(t('chats.alreadyOpen'));
-      onOpenChat(res.chatId);
-      return;
-    }
-    flash(res.ok ? t('discover.helloSent') : res.reason);
   };
 
   const searchingNow = query.trim().length > 0;
@@ -300,7 +306,14 @@ export function DiscoverScreen({
             now={now}
             meters={distanceMeters(spot.location, item)}
             meId={spot.meId}
-            joinLabel={joinLabel(item, spot.meId, spot.requests, spot.chats, t)}
+            joinLabel={joinLabel(
+              item,
+              spot.meId,
+              spot.requests,
+              spot.chats,
+              [...spot.live, ...spot.pins],
+              t,
+            )}
             authorName={
               item.anonymous && item.authorId !== spot.meId
                 ? t('common.anonymous')
@@ -367,20 +380,23 @@ function SearchGlyph({ color }: { color: string }) {
 function joinLabel(
   pin: Pin,
   meId: string,
-  requests: { pinId: string; fromId: string; status: string }[],
+  requests: JoinRequest[],
   chats: { pinId: string; memberIds: string[] }[],
+  pins: { id: string; authorId: string }[],
   t: (key: string) => string,
 ) {
   if (pin.authorId === meId) return t('discover.joinMine');
-  const mine = requests.find((r) => r.pinId === pin.id && r.fromId === meId);
+  const waiting = pendingPairRequest(requests, pins, meId, pin.authorId);
+  if (waiting?.fromId === meId) return t('discover.waiting');
+  const mine = (requests || []).find((r) => r.pinId === pin.id && r.fromId === meId);
   if (mine?.status === 'accepted') {
-    return chats.some((c) => c.pinId === pin.id && c.memberIds.includes(meId))
+    return (chats || []).some((c) => c.pinId === pin.id && c.memberIds.includes(meId))
       ? t('discover.openChat')
       : t('discover.chatOpen');
   }
   if (mine?.status === 'pending') return t('discover.waiting');
   if (pin.capacity && pinFilledCount(pin) >= pin.capacity) return t('discover.fullCta');
-  return pin.kind === 'chat' ? t('discover.sayHi') : t('discover.join');
+  return t('discover.join');
 }
 
 function PulseCard({
@@ -408,8 +424,9 @@ function PulseCard({
 }) {
   const styles = useThemedStyles(createStyles);
   const { t } = useTranslation();
+  const isMyCard = pin.authorId === meId;
   const joinOff = cta === t('discover.waiting') || cta === t('discover.fullCta');
-  const who = pin.authorId === meId ? t('common.you') : authorName;
+  const who = isMyCard ? t('common.you') : authorName;
 
   return (
     <Pressable onPress={onMap} style={styles.card}>
@@ -437,10 +454,20 @@ function PulseCard({
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={cta}
-          style={[styles.solid, joinOff && styles.solidOff]}
-          onPress={onJoin}
+          style={[
+            styles.solid,
+            isMyCard && styles.myCardButton,
+            joinOff && styles.solidOff,
+          ]}
+          onPress={(e) => {
+            e?.stopPropagation?.();
+            if (joinOff) return;
+            onJoin();
+          }}
         >
-          <Text style={styles.solidText}>{cta}</Text>
+          <Text style={[styles.solidText, isMyCard && styles.myCardButtonText]}>
+            {cta}
+          </Text>
         </Pressable>
       </View>
     </Pressable>
@@ -514,10 +541,10 @@ const createStyles = (colors: ColorTokens) =>
     },
     emptyCtaText: { color: '#fff', fontWeight: '900', fontSize: 15 },
     card: {
-      backgroundColor: 'rgba(10, 8, 20, 0.55)',
+      backgroundColor: colors.paper,
       borderRadius: radius.md,
       borderWidth: 1,
-      borderColor: 'rgba(255, 255, 255, 0.12)',
+      borderColor: colors.line,
       padding: 12,
       gap: 12,
     },
@@ -538,6 +565,12 @@ const createStyles = (colors: ColorTokens) =>
       alignItems: 'center',
     },
     solidOff: { backgroundColor: colors.muted },
+    myCardButton: {
+      backgroundColor: 'transparent',
+      borderWidth: 1.5,
+      borderColor: colors.teal,
+    },
+    myCardButtonText: { color: colors.teal },
     solidText: { color: '#fff', fontWeight: '800', fontSize: 13 },
     toast: {
       position: 'absolute',

@@ -255,11 +255,11 @@ export function filterPinsByRange(
   range: PinRange,
   myArea: string,
 ) {
-  return pins.filter((pin) => pinMatchesRange(pin, origin, meId, range, myArea));
+  return (pins || []).filter((pin) => pinMatchesRange(pin, origin, meId, range, myArea));
 }
 
-export function livePins(pins: Pin[], now = Date.now()) {
-  return pins.filter((p) => p.expiresAt > now && !p.retiredAt);
+export function livePins(pins: Pin[] | undefined, now = Date.now()) {
+  return (pins || []).filter((p) => p.expiresAt > now && !p.retiredAt);
 }
 
 export function formatMeetAt(ts: number, now = Date.now()) {
@@ -338,7 +338,7 @@ export function pendingPairRequest(
         (r.fromId === otherId && r.toId === meId)
       );
     }
-    const host = (pins || []).find((p) => p.id === r.pinId)?.authorId;
+    const host = String(r.toId || '').trim() || (pins || []).find((p) => p.id === r.pinId)?.authorId;
     if (!host) return false;
     return (r.fromId === meId && host === otherId) || (r.fromId === otherId && host === meId);
   });

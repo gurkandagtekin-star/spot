@@ -92,6 +92,17 @@ export type Profile = {
   safeShare?: { token: string; expiresAt: number; url: string } | null;
 };
 
+export type FollowListUser = {
+  id: string;
+  name: string;
+  firstName?: string;
+  lastName?: string;
+  username: string;
+  displayName?: string;
+  photoUrl?: string;
+  avatarUrl?: string;
+};
+
 export type Pin = {
   id: string;
   authorId: string;
@@ -120,6 +131,7 @@ export type JoinRequest = {
   fromId: string;
   toId?: string;
   status: RequestStatus;
+  createdAt?: number;
 };
 
 export type ChatMessage = {

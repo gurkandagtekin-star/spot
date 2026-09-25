@@ -359,7 +359,30 @@ function userById(db, id) {
   return db.users.find((u) => u.id === id);
 }
 
+function hourInIstanbul(ms) {
+  try {
+    const parts = new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Europe/Istanbul',
+      hour: 'numeric',
+      hourCycle: 'h23',
+    }).formatToParts(new Date(ms));
+    return Number(parts.find((p) => p.type === 'hour')?.value || 0);
+  } catch {
+    return (new Date(ms).getUTCHours() + 3) % 24;
+  }
+}
+
+function isNightHour(hour) {
+  return hour >= 22 || hour < 5;
+}
+
+function checkinIsNight(c) {
+  if (typeof c.night === 'boolean') return c.night;
+  return isNightHour(hourInIstanbul(c.at || 0));
+}
+
 function weekLeaders(db) {
+  // Haftalık: son 7 gün, host olunan olumlu check-in. Top 3.
   const since = now() - 7 * 24 * 60 * 60 * 1000;
   const scores = {};
   for (const c of db.checkins || []) {
@@ -391,11 +414,13 @@ function refreshBadges(db, userId) {
   const mine = (db.checkins || []).filter((c) => c.fromId === userId && c.happened);
   const guest = mine.filter((c) => c.pinAuthorId !== userId);
   const kinds = new Set(mine.map((c) => c.pinKind).filter(Boolean));
-  const dakik = mine.filter((c) => c.near).length;
+  const seri = mine.filter((c) => c.near).length;
+  const gece = mine.filter((c) => checkinIsNight(c)).length;
   const badges = [];
   if (guest.filter((c) => c.lastMinute).length >= 3) badges.push('kurtarici');
   if (mine.length >= 5 && kinds.size >= 2) badges.push('kelebek');
-  if (dakik >= 2) badges.push('dakik');
+  if (seri >= 2) badges.push('seri');
+  if (gece >= 2) badges.push('gece');
   user.badges = badges;
 }
 
@@ -546,6 +571,72 @@ function saveWallNote(owner, author, text) {
   return post;
 }
 
+const WALL_POSTS_MARK = '[[WALL_POSTS]]';
+const PIN_COVERS_MARK = '[[PIN_COVERS]]';
+
+function bioMarkPayload(bio, mark) {
+  const raw = String(bio || '');
+  const start = raw.indexOf(mark);
+  if (start < 0) return '';
+  let rest = raw.slice(start + mark.length);
+  const next = [PIN_COVERS_MARK, WALL_POSTS_MARK]
+    .map((m) => rest.indexOf(m))
+    .filter((i) => i >= 0);
+  if (next.length) rest = rest.slice(0, Math.min(...next));
+  return rest.trim();
+}
+
+function visibleBioText(bio) {
+  const raw = String(bio || '');
+  const cuts = [PIN_COVERS_MARK, WALL_POSTS_MARK]
+    .map((m) => raw.indexOf(m))
+    .filter((i) => i >= 0);
+  if (!cuts.length) return raw.trim();
+  return raw.slice(0, Math.min(...cuts)).trim();
+}
+
+function readWallFromBio(bio) {
+  const raw = bioMarkPayload(bio, WALL_POSTS_MARK);
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function withWallInBio(bio, posts) {
+  const visible = visibleBioText(bio);
+  const covers = bioMarkPayload(bio, PIN_COVERS_MARK);
+  let out = visible;
+  if (covers) out += `\n${PIN_COVERS_MARK}${covers}`;
+  if ((posts || []).length) out += `\n${WALL_POSTS_MARK}${JSON.stringify(posts)}`;
+  return out;
+}
+
+function findOwnerWallPost(owner, postId) {
+  return (
+    (owner.wallPosts || []).find((p) => p.id === postId) ||
+    readWallFromBio(owner.bio).find((p) => p.id === postId) ||
+    null
+  );
+}
+
+function dropOwnerWallPost(owner, postId) {
+  const listed = owner.wallPosts || [];
+  const bioPosts = readWallFromBio(owner.bio);
+  const post =
+    listed.find((p) => p.id === postId) || bioPosts.find((p) => p.id === postId) || null;
+  if (!post) return null;
+  owner.wallPosts = listed.filter((p) => p.id !== postId);
+  owner.bio = withWallInBio(
+    owner.bio || '',
+    bioPosts.filter((p) => p.id !== postId),
+  );
+  return post;
+}
+
 function blockedPair(db, a, b) {
   if (!a || !b || a === b) return false;
   const rows = db.blocks || [];
@@ -594,13 +685,9 @@ function pendingRequestBetween(db, a, b) {
   if (!a || !b || a === b) return null;
   return (db.requests || []).find((r) => {
     if (r.status !== 'pending') return false;
-    if (r.pinId === 'hello') {
-      return (
-        (r.fromId === a && r.toId === b) || (r.fromId === b && r.toId === a)
-      );
-    }
-    const pin = (db.pins || []).find((p) => p.id === r.pinId);
-    const host = pin?.authorId;
+    const host =
+      r.toId ||
+      (r.pinId === 'hello' ? r.toId : (db.pins || []).find((p) => p.id === r.pinId)?.authorId);
     if (!host) return false;
     return (r.fromId === a && host === b) || (r.fromId === b && host === a);
   });
@@ -761,8 +848,8 @@ function publicProfile(user, extra = {}) {
           ...followStats(extra.db, user.id),
         }
       : user.stats,
-    followingIds: self
-      ? (extra.db?.follows || [])
+    followingIds: extra.db
+      ? (extra.db.follows || [])
           .filter((f) => f.followerId === user.id)
           .map((f) => f.followingId)
       : undefined,
@@ -1090,7 +1177,7 @@ app.patch('/me', auth, (req, res) => {
   }
   if (Array.isArray(req.body.interests)) {
     user.interests = req.body.interests
-      .map((id) => String(id || '').trim().slice(0, 24))
+      .map((id) => String(id || '').trim().slice(0, 32))
       .filter(Boolean)
       .slice(0, 8);
   }
@@ -1636,75 +1723,129 @@ app.delete('/pins/:id', auth, (req, res) => {
 });
 
 app.post('/pins/:id/join', auth, (req, res) => {
-  if (tooMany(req, 'join', 20, 10 * 60 * 1000)) {
-    return rateLimited(req, res, 'Çok sık istek gönderdin. Biraz sonra dene.');
-  }
-  prune(db);
-  const pin = db.pins.find((p) => p.id === req.params.id && p.expiresAt > now() && !p.retiredAt);
-  if (!pin) return res.status(404).json(fail(req, 'Bu mark artık yok.'));
-  if (pin.authorId === req.userId) {
-    return res.status(400).json(fail(req, 'Kendi mark’ına istek gönderemezsin.'));
-  }
-  if (blockedPair(db, req.userId, pin.authorId)) {
-    return res.status(400).json(fail(req, 'Bu kişiyle eşleşme kapalı.'));
-  }
-  const relation = pairRelation(db, req.userId, pin.authorId);
-  if (relation.kind === 'chat') {
-    revealChatFor(relation.chat, req.userId);
-    save(db);
-    emitAllRelated([req.userId, pin.authorId]);
-    return res.json({
-      ...snapshotFor(db, req.userId),
-      chatId: relation.chat.id,
-      already: true,
-    });
-  }
-  if (relation.kind === 'pending') {
-    return res.status(400).json(fail(req, 'İstek zaten gönderildi, onay bekleniyor.'));
-  }
-  const existing = db.requests.find(
-    (r) => r.pinId === pin.id && r.fromId === req.userId && r.status !== 'declined',
-  );
-  if (existing?.status === 'pending') {
-    return res.status(400).json(fail(req, 'İstek zaten gönderildi, onay bekleniyor.'));
-  }
-  if (existing?.status === 'accepted') {
-    const chat = liveChatBetween(db, req.userId, pin.authorId);
-    if (chat) {
-      revealChatFor(chat, req.userId);
+  try {
+    if (tooMany(req, 'join', 20, 10 * 60 * 1000)) {
+      return rateLimited(req, res, 'Çok sık istek gönderdin. Biraz sonra dene.');
+    }
+    prune(db);
+    const currentUserId = String(req.userId || '');
+    const pin = db.pins.find((p) => p.id === req.params.id && p.expiresAt > now() && !p.retiredAt);
+    if (!pin) return res.status(404).json(fail(req, 'Bu mark artık yok.'));
+    const targetUserId = String(pin.authorId || '');
+    if (!currentUserId || !targetUserId) {
+      return res.status(400).json(fail(req, 'İstek gönderilemedi.'));
+    }
+    if (targetUserId === currentUserId) {
+      return res.status(400).json(fail(req, 'Kendi mark’ına istek gönderemezsin.'));
+    }
+    if (blockedPair(db, currentUserId, targetUserId)) {
+      return res.status(400).json(fail(req, 'Bu kişiyle eşleşme kapalı.'));
+    }
+    const relation = pairRelation(db, currentUserId, targetUserId);
+    if (relation.kind === 'chat') {
+      revealChatFor(relation.chat, currentUserId);
       save(db);
+      emitAllRelated([currentUserId, targetUserId]);
       return res.json({
-        ...snapshotFor(db, req.userId),
+        ...snapshotFor(db, currentUserId),
+        chatId: relation.chat.id,
+        already: true,
+      });
+    }
+    if (relation.kind === 'pending') {
+      const waiting = relation.request;
+      if (waiting.fromId === currentUserId) {
+        return res.status(400).json(fail(req, 'İstek zaten gönderildi, onay bekleniyor.'));
+      }
+      waiting.status = 'accepted';
+      const t = now();
+      let chat = liveChatBetween(db, currentUserId, targetUserId);
+      if (chat) {
+        revealChatFor(chat, currentUserId);
+        revealChatFor(chat, targetUserId);
+      } else {
+        const from = userById(db, waiting.fromId);
+        chat = {
+          id: uid('chat'),
+          pinId: waiting.pinId === 'hello' ? 'dm' : pin.id,
+          memberIds: [currentUserId, targetUserId],
+          closesAt: t + 48 * 60 * 60 * 1000,
+          messages: [
+            {
+              id: uid('msg'),
+              fromId: 'system',
+              text: `${from?.name || 'Biri'} ile eşleştiniz. Kısa konuşun, yüz yüze tanışın.`,
+              at: t,
+            },
+          ],
+        };
+        db.chats = db.chats || [];
+        db.chats.unshift(chat);
+      }
+      save(db);
+      emitAllRelated([currentUserId, targetUserId]);
+      emitNotice(waiting.fromId, {
+        id: uid('note'),
+        type: 'accepted',
+        title: `${userById(db, currentUserId)?.name || 'Biri'} onayladı`,
+        body: 'Sohbet açıldı. Kısa konuşun, yüz yüze tanışın.',
+        chatId: chat.id,
+        pinId: pin.id,
+      });
+      return res.json({
+        ...snapshotFor(db, currentUserId),
         chatId: chat.id,
         already: true,
       });
     }
-    return res.status(400).json(fail(req, 'Zaten bu kişiyle bir sohbetiniz var.'));
+    const existing = (db.requests || []).find(
+      (r) => r.pinId === pin.id && r.fromId === currentUserId && r.status !== 'declined',
+    );
+    if (existing?.status === 'pending') {
+      return res.status(400).json(fail(req, 'İstek zaten gönderildi, onay bekleniyor.'));
+    }
+    if (existing?.status === 'accepted') {
+      const chat = liveChatBetween(db, currentUserId, targetUserId);
+      if (chat) {
+        revealChatFor(chat, currentUserId);
+        save(db);
+        return res.json({
+          ...snapshotFor(db, currentUserId),
+          chatId: chat.id,
+          already: true,
+        });
+      }
+      return res.status(400).json(fail(req, 'Zaten bu kişiyle bir sohbetiniz var.'));
+    }
+    const cap = pinCapacity(pin);
+    if (cap && pinFilled(db, pin) >= cap) {
+      return res.status(400).json(fail(req, 'Kadro doldu.'));
+    }
+    db.requests.unshift({
+      id: uid('req'),
+      pinId: pin.id,
+      fromId: currentUserId,
+      toId: targetUserId,
+      status: 'pending',
+      createdAt: now(),
+    });
+    save(db);
+    emitAllRelated([currentUserId, targetUserId]);
+    const from = userById(db, currentUserId);
+    emitNotice(targetUserId, {
+      id: uid('note'),
+      type: 'join',
+      title: `${from?.name || 'Biri'} selam attı`,
+      body: pin.placeName
+        ? `${pin.placeName} · ${pinVisibleText(pin.text)}`
+        : pinVisibleText(pin.text),
+      pinId: pin.id,
+    });
+    return res.json(snapshotFor(db, currentUserId));
+  } catch (err) {
+    console.error('join', err);
+    return res.status(500).json(fail(req, 'İstek gönderilemedi.'));
   }
-  const cap = pinCapacity(pin);
-  if (cap && pinFilled(db, pin) >= cap) {
-    return res.status(400).json(fail(req, 'Kadro doldu.'));
-  }
-  db.requests.unshift({
-    id: uid('req'),
-    pinId: pin.id,
-    fromId: req.userId,
-    status: 'pending',
-    createdAt: now(),
-  });
-  save(db);
-  emitAllRelated([req.userId, pin.authorId]);
-  const from = userById(db, req.userId);
-  emitNotice(pin.authorId, {
-    id: uid('note'),
-    type: 'join',
-    title: `${from?.name || 'Biri'} selam attı`,
-    body: pin.placeName
-      ? `${pin.placeName} · ${pinVisibleText(pin.text)}`
-      : pinVisibleText(pin.text),
-    pinId: pin.id,
-  });
-  res.json(snapshotFor(db, req.userId));
 });
 
 app.post('/requests/:id/decide', auth, (req, res) => {
@@ -2003,6 +2144,8 @@ app.post('/chats/:id/checkin', auth, (req, res) => {
       r.status === 'accepted' &&
       (r.fromId === req.userId || r.fromId === otherId),
   );
+  const when = pin?.meetAt || now();
+  const night = isNightHour(hourInIstanbul(when));
   const lastMinute = Boolean(
     reqRow?.createdAt &&
       pin?.meetAt &&
@@ -2020,6 +2163,7 @@ app.post('/chats/:id/checkin', auth, (req, res) => {
     otherId: otherId || '',
     happened,
     near,
+    night,
     lastMinute,
     at: now(),
   });
@@ -2175,20 +2319,27 @@ app.post('/users/:id/wall-posts', auth, (req, res) => {
   res.json(snapshotFor(db, req.userId));
 });
 
-app.delete('/users/:id/wall-posts/:postId', auth, (req, res) => {
-  const wallId = String(req.params.id);
+function deleteWallPost(req, res) {
+  const wallId = String(req.params.id || req.params.userId || '');
   const owner = userById(db, wallId);
   if (!owner) return res.status(404).json(fail(req, 'Profil yok.'));
-  const post = (owner.wallPosts || []).find((p) => p.id === req.params.postId);
+  const post = findOwnerWallPost(owner, req.params.postId);
   if (!post) return res.status(404).json(fail(req, 'Not yok.'));
-  if (post.fromId !== req.userId && wallId !== req.userId) {
+  const fromId = post.fromId || post.authorId || post.userId;
+  if (fromId !== req.userId && wallId !== req.userId) {
     return res.status(403).json(fail(req, 'Bu notu silemezsin.'));
   }
-  owner.wallPosts = (owner.wallPosts || []).filter((p) => p.id !== req.params.postId);
+  dropOwnerWallPost(owner, req.params.postId);
   save(db);
   emitWallToViewers(wallId);
-  res.json(snapshotFor(db, req.userId));
-});
+  res.json({
+    posts: wallPostsFor(db, owner, req.userId),
+    ...snapshotFor(db, req.userId),
+  });
+}
+
+app.delete('/users/:id/wall-posts/:postId', auth, deleteWallPost);
+app.delete('/api/wall/:userId/:postId', auth, deleteWallPost);
 
 app.post('/users/:id/follow', auth, (req, res) => {
   if (tooMany(req, 'follow', 40, 10 * 60 * 1000)) {
@@ -2232,6 +2383,57 @@ app.delete('/users/:id/follow', auth, (req, res) => {
   }
   res.json(snapshotFor(db, req.userId));
 });
+
+function followListCard(user) {
+  const photo = absPhoto(user.photoUrl || '');
+  return {
+    id: user.id,
+    name: user.name || '',
+    firstName: user.firstName || '',
+    lastName: user.lastName || '',
+    username: user.username || '',
+    displayName: user.name || '',
+    photoUrl: photo,
+    avatarUrl: photo,
+  };
+}
+
+function sendFollowList(req, res, kind) {
+  try {
+    const ownerId = String(req.params.id || '');
+    const owner = userById(db, ownerId);
+    if (!owner) return res.status(404).json(fail(req, 'Profil yok.'));
+    if (blockedPair(db, req.userId, ownerId)) {
+      return res.status(403).json(fail(req, 'Bu profil kapalı.'));
+    }
+    const rows = (db.follows || [])
+      .filter((f) =>
+        kind === 'followers' ? f.followingId === ownerId : f.followerId === ownerId,
+      )
+      .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+    const users = [];
+    const seen = new Set();
+    for (const row of rows) {
+      const id = kind === 'followers' ? row.followerId : row.followingId;
+      if (!id || seen.has(id)) continue;
+      seen.add(id);
+      if (blockedPair(db, req.userId, id)) continue;
+      const u = userById(db, id);
+      if (!u) continue;
+      users.push(followListCard(u));
+      if (users.length >= 200) break;
+    }
+    res.json({ users });
+  } catch (err) {
+    console.error('follow list', err);
+    res.json({ users: [] });
+  }
+}
+
+app.get('/users/:id/followers', auth, (req, res) => sendFollowList(req, res, 'followers'));
+app.get('/users/:id/following', auth, (req, res) => sendFollowList(req, res, 'following'));
+app.get('/api/users/:id/followers', auth, (req, res) => sendFollowList(req, res, 'followers'));
+app.get('/api/users/:id/following', auth, (req, res) => sendFollowList(req, res, 'following'));
 
 app.post('/users/:id/hello', auth, (req, res) => {
   try {

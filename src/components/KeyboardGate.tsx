@@ -8,7 +8,7 @@ import {
 
 const OFFSET = Platform.OS === 'ios' ? 90 : 0;
 
-/** KeyboardAvoidingView wrapper — iOS padding, Android height. */
+/** KeyboardAvoidingView wrapper — iOS padding; Android uses window resize. */
 export function KeyboardGate({
   children,
   style,
@@ -20,7 +20,7 @@ export function KeyboardGate({
 }) {
   return (
     <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       style={style ?? { flex: 1 }}
       keyboardVerticalOffset={offset}
     >

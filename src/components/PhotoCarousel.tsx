@@ -12,6 +12,11 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { getFormattedImageUrl } from '../api';
 import { Avatar } from './Avatar';
 
+export const STORY_BARS_TOP = 10;
+export const STORY_BARS_HEIGHT = 3;
+export const STORY_BARS_TO_ACTIONS = 12;
+export const COVER_ACTIONS_TOP = STORY_BARS_TOP + STORY_BARS_HEIGHT + STORY_BARS_TO_ACTIONS;
+
 type Props = {
   uris: string[];
   height: number;
@@ -117,7 +122,7 @@ export function PhotoCarousel({
         style={styles.shade}
         pointerEvents="none"
       />
-      <View style={[styles.bars, { top: topInset + 8 }]} pointerEvents="none">
+      <View style={[styles.bars, { top: topInset + STORY_BARS_TOP }]} pointerEvents="none">
         {Array.from({ length: n }).map((_, k) => (
           <View key={k} style={[styles.bar, k === i && styles.barOn]} />
         ))}
@@ -150,13 +155,13 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 12,
     right: 12,
-    zIndex: 5,
+    zIndex: 6,
     flexDirection: 'row',
     gap: 4,
   },
   bar: {
     flex: 1,
-    height: 3,
+    height: STORY_BARS_HEIGHT,
     borderRadius: 2,
     backgroundColor: 'rgba(255,255,255,0.38)',
   },

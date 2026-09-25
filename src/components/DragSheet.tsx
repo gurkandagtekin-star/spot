@@ -10,7 +10,7 @@ import {
   View,
 } from 'react-native';
 import { KeyboardGate } from './KeyboardGate';
-import { KEYBOARD_SCROLL_PAD, useKeyboardHeight } from '../hooks/useKeyboard';
+import { KEYBOARD_SCROLL_PAD, useKeyboardHeight, useStableBottomInset } from '../hooks/useKeyboard';
 import { radius, type ColorTokens } from '../theme';
 import { useThemedStyles } from '../theme/useThemedStyles';
 
@@ -45,6 +45,7 @@ export function DragSheet({
   const lockRef = useRef(lockScroll);
   lockRef.current = lockScroll;
   const kbHeight = useKeyboardHeight();
+  const navBottom = useStableBottomInset();
   const screenH = Dimensions.get('window').height;
   const open = Boolean(keyboard && kbHeight > 0);
   const maxHeight = screenH * (expanded ? 0.84 : 0.58);
@@ -167,7 +168,11 @@ export function DragSheet({
             >
               {children}
             </ScrollView>
-            {footer ? <View style={styles.footer}>{footer}</View> : null}
+            {footer ? (
+              <View style={[styles.footer, { paddingBottom: Math.max(navBottom, 10) }]}>
+                {footer}
+              </View>
+            ) : null}
           </Animated.View>
         </View>
       </KeyboardGate>
@@ -192,18 +197,18 @@ const createStyles = (colors: ColorTokens) =>
       left: 0,
       right: 0,
       bottom: 0,
-      backgroundColor: 'rgba(8, 6, 16, 0.46)',
+      backgroundColor: colors.overlay,
     },
     sheetDock: {
       flex: 1,
       justifyContent: 'flex-end',
     },
     sheet: {
-      backgroundColor: 'rgba(12, 9, 22, 0.88)',
+      backgroundColor: colors.paper,
       borderTopLeftRadius: 24,
       borderTopRightRadius: 24,
       borderWidth: 1,
-      borderColor: 'rgba(255, 255, 255, 0.1)',
+      borderColor: colors.line,
       overflow: 'hidden',
       paddingBottom: 12,
     },
@@ -216,7 +221,8 @@ const createStyles = (colors: ColorTokens) =>
       width: 40,
       height: 5,
       borderRadius: 3,
-      backgroundColor: 'rgba(255, 255, 255, 0.28)',
+      backgroundColor: colors.muted,
+      opacity: 0.45,
     },
     inner: { paddingHorizontal: 22, paddingTop: 4, gap: 10 },
     footer: {
@@ -224,7 +230,7 @@ const createStyles = (colors: ColorTokens) =>
       paddingTop: 8,
       paddingBottom: 8,
       borderTopWidth: StyleSheet.hairlineWidth,
-      borderTopColor: 'rgba(255, 255, 255, 0.1)',
+      borderTopColor: colors.line,
       gap: 10,
     },
   });

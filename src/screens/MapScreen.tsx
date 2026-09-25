@@ -18,6 +18,7 @@ import { radius, type ColorTokens } from '../theme';
 import { useTheme } from '../theme/ThemeContext';
 import { useThemedStyles } from '../theme/useThemedStyles';
 import { useTranslation } from 'react-i18next';
+import { failCatch } from '../i18n/errors';
 import type { MapIntent, PinKind } from '../types';
 import {
   distanceMeters,
@@ -97,7 +98,7 @@ export function MapScreen({
   useEffect(() => {
     if (!intent) return;
     if (intent.type === 'focus') {
-      const pin = spot.live.find((p) => p.id === intent.pinId);
+      const pin = (spot.live || []).find((p) => p.id === intent.pinId);
       if (pin) {
         setLookAt({ lat: pin.lat, lng: pin.lng });
         setFollowToken((n) => n + 1);
@@ -240,23 +241,23 @@ export function MapScreen({
     [visible, spot.meId, spot.profiles, spot.profileById, t],
   );
 
-  const selected = spot.live.find((p) => p.id === selectedId) ?? null;
+  const selected = (spot.live || []).find((p) => p.id === selectedId) ?? null;
   const author = selected ? spot.profileById(selected.authorId) ?? null : null;
   const mine = selected?.authorId === spot.meId;
   const distance = selected
     ? formatDistance(distanceMeters(spot.location, selected))
     : '';
   const myRequest = selected
-    ? spot.requests.find(
+    ? (spot.requests || []).find(
         (r) => r.pinId === selected.id && r.fromId === spot.meId,
       )
     : undefined;
   const pairChat =
     selected && !mine
-      ? liveChatWith(spot.chats, spot.meId, selected.authorId)
+      ? liveChatWith(spot.chats || [], spot.meId, selected.authorId)
       : undefined;
   const incoming = selected && mine
-    ? spot.requests
+    ? (spot.requests || [])
         .filter((r) => r.pinId === selected.id)
         .flatMap((request) => {
           const from = spot.profileById(request.fromId);
@@ -264,8 +265,8 @@ export function MapScreen({
         })
     : [];
 
-  const helloCount = spot.requests.filter((r) => {
-    const pin = spot.pins.find((p) => p.id === r.pinId);
+  const helloCount = (spot.requests || []).filter((r) => {
+    const pin = (spot.pins || []).find((p) => p.id === r.pinId);
     return pin?.authorId === spot.meId && r.status === 'pending';
   }).length;
 
@@ -484,7 +485,7 @@ export function MapScreen({
           if (!selected) return;
           const chat =
             pairChat ||
-            spot.chats.find(
+            spot.chats?.find(
               (c) => c.pinId === selected.id && c.memberIds.includes(spot.meId),
             );
           if (chat) {
@@ -494,25 +495,42 @@ export function MapScreen({
         }}
         onJoin={async () => {
           if (!selected) return null;
-          if (pairChat) {
-            setSelectedId(null);
-            flash(t('chats.alreadyOpen'));
-            onOpenChat(pairChat.id);
+          try {
+            if (pairChat) {
+              setSelectedId(null);
+              flash(t('chats.alreadyOpen'));
+              onOpenChat(pairChat.id);
+              return null;
+            }
+            const res = await spot.sendJoin(selected.id);
+            if (!res.ok) {
+              console.error('map onJoin', {
+                pinId: selected.id,
+                fromId: spot.meId,
+                toId: selected.authorId,
+                reason: res.reason,
+              });
+              flash(res.reason);
+              return res.reason;
+            }
+            if (res.chatId) {
+              setSelectedId(null);
+              flash(t('chats.alreadyOpen'));
+              onOpenChat(res.chatId);
+              return null;
+            }
+            flash(t('map.joinSent'));
             return null;
+          } catch (err) {
+            console.error('map onJoin', {
+              pinId: selected.id,
+              fromId: spot.meId,
+              toId: selected.authorId,
+              err,
+            });
+            flash(failCatch(err, 'İstek gönderilemedi.'));
+            return failCatch(err, 'İstek gönderilemedi.');
           }
-          const res = await spot.sendJoin(selected.id);
-          if (!res.ok) {
-            flash(res.reason);
-            return res.reason;
-          }
-          if (res.chatId) {
-            setSelectedId(null);
-            flash(t('chats.alreadyOpen'));
-            onOpenChat(res.chatId);
-            return null;
-          }
-          flash(t('map.joinSent'));
-          return null;
         }}
         onWithdraw={async () => {
           if (!myRequest) return;
@@ -630,14 +648,14 @@ const createStyles = (colors: ColorTokens) =>
     left: 24,
     right: 24,
     bottom: 96,
-    backgroundColor: 'rgba(12, 9, 22, 0.92)',
+    backgroundColor: colors.paper,
     borderRadius: radius.md,
     padding: 16,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.16)',
+    borderColor: colors.line,
   },
-  emptyTitle: { fontWeight: '800', color: '#fff', fontSize: 16 },
-  emptyText: { color: 'rgba(255,255,255,0.86)', marginTop: 6, lineHeight: 22 },
+  emptyTitle: { fontWeight: '800', color: colors.ink, fontSize: 16 },
+  emptyText: { color: colors.muted, marginTop: 6, lineHeight: 22 },
   fab: {
     position: 'absolute',
     bottom: 16,

@@ -52,7 +52,7 @@ export function MapHint({ visible, onDismiss }: Props) {
   );
 }
 
-const createStyles = (_colors: ColorTokens) =>
+const createStyles = (colors: ColorTokens) =>
   StyleSheet.create({
     wrap: {
       position: 'absolute',
@@ -64,20 +64,20 @@ const createStyles = (_colors: ColorTokens) =>
     },
     bubble: {
       maxWidth: 320,
-      backgroundColor: 'rgba(12, 9, 22, 0.88)',
+      backgroundColor: colors.paper,
       borderWidth: 1,
-      borderColor: 'rgba(255,255,255,0.14)',
+      borderColor: colors.line,
       borderRadius: radius.md,
       paddingHorizontal: 18,
       paddingVertical: 14,
       shadowColor: '#000',
-      shadowOpacity: 0.28,
+      shadowOpacity: 0.16,
       shadowRadius: 16,
       shadowOffset: { width: 0, height: 8 },
       elevation: 8,
     },
     kicker: {
-      color: '#FF8FB3',
+      color: colors.coral,
       fontWeight: '800',
       fontSize: 11,
       letterSpacing: 0.7,
@@ -86,7 +86,7 @@ const createStyles = (_colors: ColorTokens) =>
     },
     title: {
       marginTop: 4,
-      color: '#fff',
+      color: colors.ink,
       fontWeight: '800',
       fontSize: 15,
       lineHeight: 22,

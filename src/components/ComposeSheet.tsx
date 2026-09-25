@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   Image,
   Pressable,
   StyleSheet,
@@ -92,6 +93,7 @@ export function ComposeSheet({
   const [photo, setPhoto] = useState<{ uri: string; dataUrl: string } | null>(null);
   const [picking, setPicking] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
   const clockTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const closeClockSoon = () => {
@@ -146,6 +148,7 @@ export function ComposeSheet({
   };
 
   const submit = async () => {
+    if (submitting) return;
     if (kind === 'chat' && !isPro) {
       onOpenPro?.();
       setError(t('map.chatPro'));
@@ -159,33 +162,41 @@ export function ComposeSheet({
       onOpenPro?.();
       return;
     }
-    if (remaining <= 0) {
-      if (adMarksLeft > 0 && onWatchAd) {
-        const ok = await onWatchAd();
-        if (!ok) return;
-      } else {
-        onOpenPro?.();
-        setError(t('compose.quota'));
+    setSubmitting(true);
+    setError(null);
+    try {
+      if (remaining <= 0) {
+        if (adMarksLeft > 0 && onWatchAd) {
+          const ok = await onWatchAd();
+          if (!ok) return;
+        } else {
+          onOpenPro?.();
+          setError(t('compose.quota'));
+          return;
+        }
+      }
+      const meetAt = kind === 'chat' || whenNow ? Date.now() : meetAtFromClock(clock.hour, clock.minute);
+      const capacity = seats === 'any' ? undefined : (Number(seats) as 2 | 3 | 4);
+      const fail = await onSubmit(
+        text,
+        kind,
+        meetAt,
+        featured,
+        photo?.dataUrl,
+        capacity,
+        anonymous,
+      );
+      if (fail) {
+        setError(fail);
         return;
       }
+      reset();
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t('compose.quota'));
+    } finally {
+      setSubmitting(false);
     }
-    const meetAt = kind === 'chat' || whenNow ? Date.now() : meetAtFromClock(clock.hour, clock.minute);
-    const capacity = seats === 'any' ? undefined : (Number(seats) as 2 | 3 | 4);
-    const fail = await onSubmit(
-      text,
-      kind,
-      meetAt,
-      featured,
-      photo?.dataUrl,
-      capacity,
-      anonymous,
-    );
-    if (fail) {
-      setError(fail);
-      return;
-    }
-    reset();
-    onClose();
   };
 
   return (
@@ -311,15 +322,24 @@ export function ComposeSheet({
           {error ? <Text style={styles.error}>{error}</Text> : null}
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel={t('compose.drop')}
-            style={styles.cta}
+            accessibilityLabel={submitting ? t('compose.dropping') : t('compose.drop')}
+            accessibilityState={{ disabled: submitting }}
+            disabled={submitting}
+            style={[styles.cta, submitting && styles.ctaBusy]}
             onPress={() => void submit()}
           >
-            <Text style={styles.ctaText}>
-              {remaining <= 0 && adMarksLeft > 0
-                ? t('compose.watchAd')
-                : t('compose.drop')}
-            </Text>
+            {submitting ? (
+              <View style={styles.ctaRow}>
+                <ActivityIndicator color="#fff" size="small" />
+                <Text style={styles.ctaText}>{t('compose.dropping')}</Text>
+              </View>
+            ) : (
+              <Text style={styles.ctaText}>
+                {remaining <= 0 && adMarksLeft > 0
+                  ? t('compose.watchAd')
+                  : t('compose.drop')}
+              </Text>
+            )}
           </Pressable>
         </>
       }
@@ -614,5 +634,7 @@ const createStyles = (colors: ColorTokens) =>
       paddingVertical: 15,
       alignItems: 'center',
     },
+    ctaBusy: { opacity: 0.75 },
+    ctaRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
     ctaText: { color: '#fff', fontWeight: '800', fontSize: 16 },
   });

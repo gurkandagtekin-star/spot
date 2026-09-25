@@ -93,13 +93,13 @@
     "helloSent": "Selam gitti. Onaylarsa sohbet açılır.",
     "anonTitle": "Anonim mark",
     "anonBody": "Bu mark anonim olarak oluşturulmuş. Profil duvarı gizli.",
-    "joinMine": "İstek gönder",
+    "joinMine": "Mark'a git",
     "openChat": "Sohbete git",
     "chatOpen": "Sohbet açık",
     "waiting": "Onay bekleniyor",
     "fullCta": "Kadro doldu",
-    "sayHi": "Selam at",
-    "join": "Katıl"
+    "sayHi": "İstek gönder",
+    "join": "İstek gönder"
   },
   "compose": {
     "kicker": "Yeni mark",
@@ -138,6 +138,7 @@
     "phMeet": "Burada buluşma var, gelmek isteyen yazsın.",
     "watchAd": "Reklam izle, +1 mark",
     "drop": "Mark koy",
+    "dropping": "Kaydediliyor...",
     "photoFail": "Fotoğraf alınamadı.",
     "addVisual": "Görsel ekle",
     "meetPhoto": "Buluşma fotoğrafı",
@@ -279,11 +280,15 @@
     "statMeet": "Buluşma",
     "statFollowers": "Takipçi",
     "statFollowing": "Takip",
+    "followListEmptyFollowers": "Henüz takipçi yok.",
+    "followListEmptyFollowing": "Henüz kimseyi takip etmiyor.",
+    "followListFail": "Liste yüklenemedi.",
     "bioOwn": "Düzenle’den kısa bir biyografi yaz.",
     "bioEmpty": "Biyografi yok.",
     "wall": "Duvar",
     "places": "Lokasyonlar",
     "share": "Paylaş",
+    "sharing": "Paylaşılıyor...",
     "wallPh": "Duvarına bir not yaz...",
     "placesEmptyOwn": "Mark koydukça takıldığın mekanlar burada birikir.",
     "placesEmpty": "Henüz mekan yok.",
@@ -301,6 +306,9 @@
     "back": "Geri",
     "proA11y": "Mark Date Pro",
     "deleteNote": "Sil",
+    "deletingNote": "Siliniyor...",
+    "deleteNoteTitle": "Notu sil",
+    "deleteNoteBody": "Bu duvar notu kalıcı olarak silinecek. Devam etmek istiyor musun?",
     "blocked": "Engellendi.",
     "reported": "Şikayet alındı. Ekip bakacak.",
     "wallPosted": "Duvara düştü.",
@@ -333,6 +341,9 @@
     "vibeKicker": "Profil",
     "vibe": "Vibe",
     "vibeHint": "Fotoğrafın üstündeki nota yazılır. En fazla 8 etiket.",
+    "vibeCustom": "Kendi modunu yarat",
+    "vibeCustomPh": "Modun ne?",
+    "vibeCustomAdd": "Ekle",
     "editKicker": "Duvarı düzenle",
     "streetId": "Sokak kimliği",
     "firstName": "Ad",
@@ -462,6 +473,44 @@
     "phYear": "YYYY",
     "phHandle": "kullaniciadi",
     "phBio": "Kahve, sahil, yeni insan…"
+  },
+  "badges": {
+    "guideKicker": "Rozetler ve unvanlar",
+    "guideTitle": "Nasıl Kazanılır?",
+    "guideLead": "Buluşmalara katılarak ve check-in yaparak rozetlerin kilidini açabilirsin. Sosyal Lider tacı her pazartesi yeniden sahiplerini bulur.",
+    "guideA11y": "Rozetlerin nasıl kazanıldığını göster",
+    "earned": "Kazanıldı",
+    "earnedLeader": "Zirvede",
+    "locked": "Kilitli",
+    "theirs": "Sahip",
+    "otherTitle": "{{name}} kişisinin rozetleri",
+    "otherLead": "Bu profilde görünen unvanlar ve nasıl kazanıldıkları.",
+    "otherEmpty": "Bu profilde henüz rozet bulunmuyor.",
+    "socialLeader": {
+      "title": "Sosyal Lider",
+      "how": "Bulunduğu ortamda liderliği ele alan ve grubu bir arada tutan aktif üye.",
+      "need": "Son 7 günde en çok olumlu host check-in'i yapan ilk 3 kişiden biri ol."
+    },
+    "seri": {
+      "title": "Seri",
+      "how": "Buluşma noktalarına zamanında ve hızlı bir şekilde ulaşan kararlı üye.",
+      "need": "Buluşma noktasına 350 metre içinde en az 2 kez check-in yap."
+    },
+    "gece": {
+      "title": "Gece Kuşu",
+      "how": "Şehrin hareketli gece hayatına ve geç saatlerdeki etkinliklere katılan aktif üye.",
+      "need": "22:00 ile 05:00 saatleri arasında en az 2 gece buluşması gerçekleştir."
+    },
+    "kurtarici": {
+      "title": "Kurtarıcı",
+      "how": "Planlanan buluşmalara son dakikada yetişerek organizasyonu tamamlayan üye.",
+      "need": "Buluşmaya 45 dakikadan az kala başkasının mark'ına 3 kez katıl."
+    },
+    "kelebek": {
+      "title": "Sosyal Kelebek",
+      "how": "Farklı türdeki etkinliklere ve buluşmalara katılarak geniş bir sosyallik çemberi oluşturan üye.",
+      "need": "Toplamda 5 check-in yap ve en az 2 farklı türde sosyalleş."
+    }
   },
   "conn": {
     "title": "Sunucuya ulaşılamadı",
